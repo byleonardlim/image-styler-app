@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 
 export default function Page() {
-  const [prompt, setPrompt] = useState('');
+  const [style, setStyle] = useState('ghibli');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -19,7 +19,7 @@ export default function Page() {
 
     try {
       const formData = new FormData();
-      formData.append('prompt', prompt);
+      formData.append('style', style);
       if (imageFile) {
         formData.append('image', imageFile);
       }
@@ -91,17 +91,37 @@ export default function Page() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label htmlFor="prompt" className="text-sm text-gray-500">
-              Describe the changes
+            <label className="text-sm text-gray-500">
+              Select Style
             </label>
-            <textarea
-              id="prompt"
-              className="min-h-[100px] w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed resize-none"
-              placeholder="Describe the changes you want to make to the image..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              disabled={isLoading}
-            />
+            <div className="space-y-2">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="ghibli"
+                  name="style"
+                  value="ghibli"
+                  checked={style === 'ghibli'}
+                  onChange={(e) => setStyle(e.target.value)}
+                  disabled={isLoading}
+                  className="mr-2"
+                />
+                <label htmlFor="ghibli" className="text-sm text-gray-700">Studio Ghibli Style</label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="family-guy"
+                  name="style"
+                  value="family-guy"
+                  checked={style === 'family-guy'}
+                  onChange={(e) => setStyle(e.target.value)}
+                  disabled={isLoading}
+                  className="mr-2"
+                />
+                <label htmlFor="family-guy" className="text-sm text-gray-700">Family Guy Style</label>
+              </div>
+            </div>
           </div>
 
           <button

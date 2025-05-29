@@ -10,8 +10,21 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
-    const prompt = formData.get('prompt') as string;
+    const style = formData.get('style') as string;
     const imageFile = formData.get('image') as File;
+
+    // Get the style prompt from environment variables
+    let prompt = '';
+    switch(style) {
+      case 'ghibli':
+        prompt = process.env.STYLE_PROMPT_GHIBLI || 'Transform this image into a Studio Ghibli inspired anime style';
+        break;
+      case 'family-guy':
+        prompt = process.env.STYLE_PROMPT_FAMILY_GUY || 'Transform this image into a Family Guy inspired cartoon style';
+        break;
+      default:
+        return Response.json({ error: 'Invalid style selected' }, { status: 400 });
+    }
 
     if (!prompt) {
       return Response.json({ error: 'Prompt is required' }, { status: 400 });
