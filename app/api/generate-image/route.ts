@@ -14,20 +14,20 @@ export async function POST(req: Request) {
     const imageFile = formData.get('image') as File;
 
     // Get the style prompt from environment variables
-    let prompt = '';
+    let prompt: string;
     switch(style) {
       case 'ghibli':
-        prompt = process.env.STYLE_PROMPT_GHIBLI || 'Transform this image into a Studio Ghibli inspired anime style';
+        prompt = process.env.STYLE_PROMPT_GHIBLI!;
         break;
       case 'family-guy':
-        prompt = process.env.STYLE_PROMPT_FAMILY_GUY || 'Transform this image into a Family Guy inspired cartoon style';
+        prompt = process.env.STYLE_PROMPT_FAMILY_GUY!;
         break;
       default:
         return Response.json({ error: 'Invalid style selected' }, { status: 400 });
     }
 
     if (!prompt) {
-      return Response.json({ error: 'Prompt is required' }, { status: 400 });
+      return Response.json({ error: 'Missing environment variable for style prompt' }, { status: 500 });
     }
 
     if (!imageFile) {
