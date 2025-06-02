@@ -22,6 +22,9 @@ export async function POST(req: Request) {
       case 'family-guy':
         prompt = process.env.STYLE_PROMPT_FAMILY_GUY!;
         break;
+      case 'disney':
+        prompt = process.env.STYLE_PROMPT_DISNEY!;
+        break;
       default:
         return Response.json({ error: 'Invalid style selected' }, { status: 400 });
     }

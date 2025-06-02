@@ -5,8 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { X } from 'lucide-react';
 
 export default function Page() {
@@ -114,6 +112,15 @@ export default function Page() {
                   disabled={isLoading}
                 >
                   Family Guy Style
+                </Button>
+                <Button
+                  type="button"
+                  variant={style === 'disney' ? "default" : "outline"}
+                  onClick={() => setStyle('disney')}
+                  className="rounded-l-none -ml-px"
+                  disabled={isLoading}
+                >
+                  Disney Style
                 </Button>
               </div>
             </div>
