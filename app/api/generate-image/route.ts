@@ -1,85 +1,105 @@
 import OpenAI from 'openai';
+import { createClient } from '@supabase/supabase-js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
 
 // Allow responses up to 60 seconds
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
-    const style = formData.get('style') as string;
-    const imageFile = formData.get('image') as File;
+    // Get the next pending job
+    const { data: job, error: fetchError } = await supabase
+      .from('image_jobs')
+      .select('*')
+      .eq('status', 'pending')
+      .single();
 
-    // Get the style prompt from environment variables
-    let prompt: string;
-    switch(style) {
-      case 'ghibli':
-        prompt = process.env.STYLE_PROMPT_GHIBLI!;
-        break;
-      case 'family-guy':
-        prompt = process.env.STYLE_PROMPT_FAMILY_GUY!;
-        break;
-      case 'disney':
-        prompt = process.env.STYLE_PROMPT_DISNEY!;
-        break;
-      default:
-        return Response.json({ error: 'Invalid style selected' }, { status: 400 });
+    if (fetchError) {
+      throw fetchError;
     }
 
-    if (!prompt) {
-      return Response.json({ error: 'Missing environment variable for style prompt' }, { status: 500 });
+    if (!job) {
+      return new Response('No pending jobs', { status: 204 });
     }
 
-    if (!imageFile) {
-      return Response.json({ error: 'Image file is required' }, { status: 400 });
-    }
+    // Update job status to processing
+    await supabase
+      .from('image_jobs')
+      .update({ status: 'processing' })
+      .eq('id', job.id);
 
-    // Validate file type - support common web image formats
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!allowedTypes.includes(imageFile.type)) {
-      return Response.json({ 
-        error: 'Only JPEG, PNG, and WebP images are supported. Please convert your image to one of these formats.' 
-      }, { status: 400 });
-    }
+    // Process each image in the job
+    const processedImages = await Promise.all(
+      job.images.map(async (imageData: any) => {
+        // Get the style prompt from environment variables
+        let prompt: string;
+        switch(job.style) {
+          case 'ghibli':
+            prompt = process.env.STYLE_PROMPT_GHIBLI!;
+            break;
+          case 'family-guy':
+            prompt = process.env.STYLE_PROMPT_FAMILY_GUY!;
+            break;
+          case 'disney':
+            prompt = process.env.STYLE_PROMPT_DISNEY!;
+            break;
+          default:
+            throw new Error('Invalid style selected');
+        }
 
-    // Create a new File object with the correct type
-    const file = new File([imageFile], imageFile.name, { type: 'image/png' });
+        if (!prompt) {
+          throw new Error('Missing environment variable for style prompt');
+        }
 
-    // Make the API call with b64_json format
-    const response = await openai.images.edit({
-      model: "gpt-image-1",
-      image: file,
-      prompt,
-      size: 'auto',
-      n: 1,
-    });
+        // Create a new File object from the stored image data
+        const file = new File([Buffer.from(imageData.data)], imageData.name, { type: imageData.type });
 
-    if (!response.data || response.data.length === 0) {
-      throw new Error('No image data returned from OpenAI');
-    }
+        // Make the API call with b64_json format
+        const response = await openai.images.edit({
+          model: "gpt-image-1",
+          image: file,
+          prompt,
+          size: 'auto',
+          n: 1,
+        });
 
-    const image = response.data[0];
-    const base64Data = image.b64_json;
-    if (!base64Data) {
-      throw new Error('No base64 data returned from OpenAI');
-    }
+        if (!response.data || response.data.length === 0) {
+          throw new Error('No image data returned from OpenAI');
+        }
 
-    // Convert base64 to Buffer
-    const imageBuffer = Buffer.from(base64Data, 'base64');
+        const processedImage = response.data[0];
+        const base64Data = processedImage.b64_json;
+        if (!base64Data) {
+          throw new Error('No base64 data returned from OpenAI');
+        }
 
-    return new Response(imageBuffer, {
-      headers: {
-        'Content-Type': 'image/png',
-        'Content-Length': imageBuffer.byteLength.toString(),
-      },
-    });
+        // Convert base64 to Buffer
+        return Buffer.from(base64Data, 'base64');
+      })
+    );
+
+    // Update job status to completed
+    await supabase
+      .from('image_jobs')
+      .update({ 
+        status: 'completed',
+        processed_images: processedImages.map(buffer => buffer.toString('base64'))
+      })
+      .eq('id', job.id);
+
+    return new Response('Job processed successfully', { status: 200 });
   } catch (error) {
-    console.error('Error editing image:', error);
+    console.error('Error processing job:', error);
     return Response.json(
-      { error: error instanceof Error ? error.message : 'Failed to edit image' },
+      { error: error instanceof Error ? error.message : 'Failed to process job' },
       { status: 500 }
     );
   }

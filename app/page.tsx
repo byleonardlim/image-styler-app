@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -9,42 +9,109 @@ import { X } from 'lucide-react';
 
 export default function Page() {
   const [style, setStyle] = useState('ghibli');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [images, setImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [totalPrice, setTotalPrice] = useState(0);
+
+  useEffect(() => {
+    const calculateTotal = () => {
+      if (images.length <= 5) {
+        return images.length * 4; // First 5 images at $4 each
+      } else {
+        return (5 * 4) + ((images.length - 5) * 3); // First 5 at $4, rest at $3
+      }
+    };
+    setTotalPrice(calculateTotal());
+  }, [images]);
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) return;
+
+    const newImages = Array.from(files);
+    const validImages = newImages.filter(file => ['image/jpeg', 'image/png', 'image/webp'].includes(file.type));
+
+    if (images.length + validImages.length > 10) {
+      setError('Maximum 10 images allowed');
+      return;
+    }
+
+    // Create previews
+    const newPreviews = validImages.map(file => {
+      return URL.createObjectURL(file);
+    });
+
+    setImages([...images, ...validImages]);
+    setImagePreviews([...imagePreviews, ...newPreviews]);
+
+    // Calculate price
+    const basePrice = Math.min(images.length + validImages.length, 5) * 4;
+    const additionalPrice = Math.max(images.length + validImages.length - 5, 0) * 3;
+    setTotalPrice(basePrice + additionalPrice);
+  };
+
+  const removeImage = (index: number) => {
+    const newImages = [...images];
+    const newPreviews = [...imagePreviews];
+    
+    newImages.splice(index, 1);
+    newPreviews.splice(index, 1);
+
+    setImages(newImages);
+    setImagePreviews(newPreviews);
+
+    // Recalculate price
+    const basePrice = Math.min(newImages.length, 5) * 4;
+    const additionalPrice = Math.max(newImages.length - 5, 0) * 3;
+    setTotalPrice(basePrice + additionalPrice);
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (images.length === 0) {
+      setError('Please upload at least one image');
+      return;
+    }
+
     setIsLoading(true);
-    setImageSrc(null);
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append('style', style);
-      if (imageFile) {
-        formData.append('image', imageFile);
-      }
+      // Store the checkout data in localStorage
+      localStorage.setItem('checkoutData', JSON.stringify({
+        images,
+        style
+      }));
 
-      const response = await fetch('/api/generate-image', {
+      // Create checkout session with price data
+      const response = await fetch('/api/payment', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          price_data: {
+            currency: 'usd',
+            unit_amount: Math.round(totalPrice * 100), // Convert to cents and round to nearest integer
+            product_data: {
+              name: 'Image Styler Service',
+              description: `${images.length} images with ${style} style`,
+            },
+          },
+        }),
       });
 
-      if (response.ok) {
-        // Create a blob from the response
-        const blob = await response.blob();
-        // Create a URL for the blob
-        const imageUrl = URL.createObjectURL(blob);
-        setImageSrc(imageUrl);
-        return;
+      if (!response.ok) {
+        throw new Error('Failed to create checkout session');
       }
 
-      setError(await response.text());
+      const { url } = await response.json();
+      window.location.href = url;
     } catch (err) {
-      setError('Failed to generate image');
+      setError(err instanceof Error ? err.message : 'Failed to process payment');
     } finally {
       setIsLoading(false);
     }
@@ -65,31 +132,43 @@ export default function Page() {
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="image">Upload Image</Label>
+              <Label>Upload Images (Max 10)</Label>
               <Input
                 type="file"
-                id="image"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setImageFile(file);
-                    const reader = new FileReader();
-                    reader.onloadend = () => setImageSrc(reader.result as string);
-                    reader.readAsDataURL(file);
-                  }
-                }}
+                id="images"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={handleImageUpload}
                 disabled={isLoading}
               />
-              {imageSrc && (
-                <div className="mt-2">
-                  <img
-                    src={imageSrc}
-                    alt="Preview"
-                    className="max-h-48 w-auto rounded-lg object-contain"
-                  />
+              {imagePreviews.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
+                  {imagePreviews.map((preview, index) => (
+                    <div key={preview} className="relative">
+                      <img
+                        src={preview}
+                        alt={`Preview ${index + 1}`}
+                        className="max-h-32 w-full rounded-lg object-cover"
+                      />
+                      <button
+                        onClick={() => removeImage(index)}
+                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
+              <div className="mt-4">
+                <p className="text-sm text-muted-foreground">
+                  Price: ${totalPrice.toFixed(2)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  First 5 photos: $4 each<br />
+                  Additional photos: $3 each
+                </p>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -130,7 +209,7 @@ export default function Page() {
               disabled={isLoading}
               className="w-full"
             >
-              Generate
+              Order (${totalPrice.toFixed(2)} USD)
             </Button>
           </div>
         </form>
@@ -141,35 +220,6 @@ export default function Page() {
           {error}
         </div>
       )}
-
-      <Card className="w-[512px] h-[512px]">
-        {isLoading ? (
-          <div className="h-full animate-pulse bg-muted rounded-lg" />
-        ) : imageSrc ? (
-          <div className="relative h-full">
-            <img
-              src={imageSrc}
-              alt="Generated image"
-              className="w-full h-full object-contain"
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 right-2"
-              onClick={() => {
-                setImageSrc(null);
-                setImageFile(null);
-              }}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : (
-          <div className="h-full w-full bg-muted rounded-lg flex items-center justify-center">
-            <p className="text-muted-foreground">Upload an image to see the result</p>
-          </div>
-        )}
-      </Card>
     </div>
   );
 }
