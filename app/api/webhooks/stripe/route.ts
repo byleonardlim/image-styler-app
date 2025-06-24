@@ -1,54 +1,260 @@
 import Stripe from 'stripe';
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { Account, Databases, Storage, ID, type Models } from 'node-appwrite';
+import { account, databases, storage } from '@/lib/appwrite';  // Import initialized instances
+import { Query } from 'node-appwrite';
 import crypto from 'crypto';
 
-// Define type for Supabase user data
-interface SupabaseUser {
-  id?: string;
+// Constants
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const VALID_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+const PIN_LENGTH = 8;
+
+// Types
+interface ImageUploadResult {
+  fileId: string;
+  fileUrl: string;
+}
+
+interface AppwriteUser extends Models.Document {
+  $id: string;
   email: string;
-  pin: string;
+  name?: string;
   stripe_customer_id: string;
   stripe_payment_intent: string;
   created_at: string;
   updated_at: string;
-  payment_status?: string;
-  last_payment_amount?: number;
-  last_payment_currency?: string;
-  last_payment_date?: string;
-  profile_image_url?: string;
+  payment_status: string;
+  last_payment_amount: number;
+  last_payment_currency: string;
+  last_payment_date: string;
+  profile_image_url: string;
+  [key: string]: any;
 }
 
-// Define type for Stripe checkout session metadata
 interface CheckoutSessionMetadata {
   imageData?: string;
   imageContentType?: string;
   productName?: string;
 }
 
-// Define type for Supabase storage error
-interface StorageError {
-  message: string;
-  details?: string;
-}
-
-// Define type for Supabase storage public URL response
-interface StoragePublicUrlResponse {
-  publicUrl: string;
-  signedUrl: string;
-}
-
-// Define type for Supabase storage upload response
-interface StorageUploadResponse {
-  error?: StorageError;
-  data?: {
-    path: string;
-  };
-}
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-05-28.basil',
 });
+
+// Helper functions
+const sendMagicLink = async (email: string, userId: string): Promise<void> => {
+  try {
+    const verificationUrl = `${process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : process.env.NEXT_PUBLIC_BASE_URL}/verify`;
+    await account.createMagicURLToken(userId, verificationUrl);
+    console.log(`Magic link sent to ${email}`);
+  } catch (error) {
+    console.error('Error sending magic link:', error);
+    throw new Error('Failed to send magic link');
+  }
+};
+
+const validateImageUpload = (buffer: Buffer, contentType: string): void => {
+  if (!VALID_IMAGE_TYPES.includes(contentType as any)) {
+    throw new Error(`Unsupported image type: ${contentType}`);
+  }
+  if (buffer.length > MAX_FILE_SIZE) {
+    throw new Error('Image file size exceeds 10MB limit');
+  }
+};
+
+const uploadImageToStorage = async (
+  imageData: string, 
+  contentType: string, 
+  userEmail: string
+): Promise<ImageUploadResult> => {
+  const fileName = `user_${userEmail.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
+  const fileBuffer = Buffer.from(imageData, 'base64');
+  
+  validateImageUpload(fileBuffer, contentType);
+
+  const formData = new FormData();
+  const blob = new Blob([fileBuffer], { type: contentType });
+  formData.append('fileId', ID.unique());
+  formData.append('file', new File([blob], fileName, { type: contentType }));
+
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/images/files`,
+    {
+      method: 'POST',
+      headers: {
+        'X-Appwrite-Project': process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!,
+        'X-Appwrite-Key': process.env.APPWRITE_API_KEY!,
+      },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to upload file: ${errorText}`);
+  }
+
+  const uploadedFile = await response.json() as StorageFileResponse;
+  if (!uploadedFile?.$id) {
+    throw new Error('No file data returned from Appwrite');
+  }
+
+  // Get the file preview URL
+  const filePreview = storage.getFilePreview('images', uploadedFile.$id);
+  const fileUrl = typeof filePreview === 'string' 
+    ? filePreview 
+    : `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/images/files/${uploadedFile.$id}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
+
+  return {
+    fileId: uploadedFile.$id,
+    fileUrl
+  };
+};
+
+const createJob = async (userId: string) => {
+  return databases.createDocument(
+    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+    'jobs',
+    ID.unique(),
+    {
+      userId,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+  );
+};
+
+const updateExistingUser = async (
+  userId: string,
+  session: Stripe.Checkout.Session,
+  currentDate: string
+): Promise<void> => {
+  const existingUser = await databases.getDocument(
+    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+    process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
+    userId
+  );
+
+  if (!existingUser) return;
+
+  const userData = {
+    ...existingUser,
+    stripe_customer_id: session.customer as string || existingUser.stripe_customer_id,
+    stripe_payment_intent: session.payment_intent as string || existingUser.stripe_payment_intent,
+    updated_at: currentDate,
+    last_payment_amount: session.amount_total ? session.amount_total / 100 : existingUser.last_payment_amount,
+    last_payment_currency: session.currency || existingUser.last_payment_currency || 'usd',
+    last_payment_date: currentDate,
+    name: session.customer_details?.name || existingUser.name || ''
+  };
+
+  await databases.updateDocument(
+    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+    process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
+    userId,
+    userData
+  );
+};
+
+const createNewUser = async (
+  email: string,
+  session: Stripe.Checkout.Session,
+  currentDate: string
+): Promise<string> => {
+  const userId = ID.unique();
+  
+  try {
+    // Create a new user with email/password (password will be reset via magic link)
+    const tempPassword = crypto.randomBytes(32).toString('hex');
+    const userName = session.customer_details?.name || 'User';
+    await account.create(userId, email, tempPassword, userName);
+    
+    // Create the user document
+    const userData = {
+      email,
+      name: session.customer_details?.name || '',
+      stripe_customer_id: session.customer as string,
+      stripe_payment_intent: session.payment_intent as string,
+      created_at: currentDate,
+      updated_at: currentDate,
+      payment_status: 'pending',
+      last_payment_amount: session.amount_total ? session.amount_total / 100 : 0,
+      last_payment_currency: session.currency || 'usd',
+      last_payment_date: currentDate,
+      profile_image_url: ''
+    };
+    
+    await databases.createDocument(
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
+      userId,
+      userData
+    );
+    
+    // Send magic link for email verification
+    await sendMagicLink(email, userId);
+    
+    return userId;
+  } catch (error) {
+    console.error('Error creating user:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      error: JSON.stringify(error, Object.getOwnPropertyNames(error))
+    });
+    throw new Error(`Failed to create user account: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+// Webhook event handlers
+async function handlePaymentIntentSucceeded(event: Stripe.Event) {
+  const paymentIntent = event.data.object as Stripe.PaymentIntent;
+  console.log('PaymentIntent was successful:', paymentIntent.id);
+  return { success: true };
+}
+
+async function handlePaymentIntentFailed(event: Stripe.Event) {
+  const paymentIntent = event.data.object as Stripe.PaymentIntent;
+  console.error('PaymentIntent failed:', paymentIntent.id, paymentIntent.last_payment_error);
+  return { success: false, error: paymentIntent.last_payment_error };
+}
+
+async function handlePaymentIntentCreated(event: Stripe.Event) {
+  const paymentIntent = event.data.object as Stripe.PaymentIntent;
+  console.log('PaymentIntent was created:', paymentIntent.id);
+  return { success: true };
+}
+
+async function handleChargeSucceeded(event: Stripe.Event) {
+  const charge = event.data.object as Stripe.Charge;
+  console.log('Charge succeeded:', charge.id, 'Amount:', charge.amount, charge.currency);
+  return { success: true };
+}
+
+async function handleChargeUpdated(event: Stripe.Event) {
+  const charge = event.data.object as Stripe.Charge;
+  console.log('Charge was updated:', charge.id, 'Status:', charge.status);
+  return { success: true };
+}
+
+// Storage related types
+interface StorageError {
+  message: string;
+  code?: number;
+  type?: string;
+}
+
+interface StorageFileResponse {
+  $id: string;
+  bucketId: string;
+  name: string;
+  mimeType: string;
+  sizeOriginal: number;
+  signature: string;
+  chunksTotal: number;
+  chunksUploaded: number;
+}
 
 export const POST = async (req: Request) => {
   try {
@@ -71,6 +277,7 @@ export const POST = async (req: Request) => {
         { status: 400 }
       );
     }
+
 
     // Verify the webhook signature
     let event;
@@ -129,249 +336,70 @@ export const POST = async (req: Request) => {
 
 async function handleCheckoutSessionCompleted(event: Stripe.Event) {
   const session = event.data.object as Stripe.Checkout.Session;
-  
-  // Get the metadata that was stored during checkout
-  const metadata = session.metadata || {};
-  const productName = metadata.productName;
+  const metadata = session.metadata as CheckoutSessionMetadata || {};
   const userEmail = session.customer_details?.email;
   
   if (!userEmail) {
-    console.error('No email found in Stripe session');
-    return;
+    throw new Error('No email found in Stripe session');
   }
 
-  // Generate an 8-character alphanumeric PIN
-  const pin = crypto.randomBytes(4).toString('hex').toUpperCase();
-  
   try {
-    // Create user in Supabase using auth system
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: userEmail,
-      password: crypto.randomBytes(16).toString('hex'), // Generate secure password
-      options: {
-        data: {
-          pin: pin,
-          stripe_customer_id: session.customer,
-          stripe_payment_intent: session.payment_intent,
-          last_payment_amount: session.amount_total,
-          last_payment_currency: session.currency,
-          last_payment_date: new Date().toISOString(),
-          payment_status: 'pending'
-        }
-      }
-    });
+    const currentDate = new Date().toISOString();
+    let userId: string;
 
-    if (authError) {
-      console.error('Error creating user in Supabase auth:', authError.message);
-      throw authError;
+    // Create new user
+    try {
+      userId = await createNewUser(userEmail, session, currentDate);
+      
+      // Send magic link for email verification
+      await sendMagicLink(userEmail, userId);
+    } catch (error) {
+      console.error('Error creating new user:', error);
+      throw error;
     }
 
-    if (!authData.user) {
-      console.error('No user data returned from auth signup');
-      throw new Error('Failed to create user');
-    }
-
-    console.log(`Successfully created user with email: ${userEmail}`);
-
-    // Handle image upload if there's an image in the metadata
-    if (metadata.imageData) {
+    // Handle image upload if present
+    if (metadata?.imageData) {
       try {
-        // Validate image data
-        if (!metadata.imageData) {
-          console.error('No image data provided');
-          throw new Error('No image data provided');
-        }
+        const { fileUrl } = await uploadImageToStorage(
+          metadata.imageData,
+          metadata.imageContentType || 'image/jpeg',
+          userEmail
+        );
 
-        // Generate a unique filename
-        const fileName = `user_${userEmail.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
-        const fileBuffer = Buffer.from(metadata.imageData, 'base64');
-
-        // Determine file type from metadata or default to jpeg
-        const contentType = metadata.imageContentType || 'image/jpeg';
-        const validContentTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        const maxFileSize = 10 * 1024 * 1024; // 10MB
-
-        if (!validContentTypes.includes(contentType)) {
-          console.error('Unsupported image type:', contentType);
-          throw new Error(`Unsupported image type: ${contentType}`);
-        }
-
-        // Validate file size
-        if (fileBuffer.length > maxFileSize) {
-          console.error('Image file too large');
-          throw new Error('Image file size exceeds 10MB limit');
-        }
-
-        // Upload image to Supabase storage
-        const { error: uploadError, data: uploadData } = await supabase.storage
-          .from('images')
-          .upload(fileName, fileBuffer, {
-            upsert: true,
-            cacheControl: '3600',
-            contentType: contentType,
-            metadata: {
-              uploaded_by: userEmail,
-              uploaded_at: new Date().toISOString(),
-              checkout_session_id: session.id
-            }
-          });
-
-        if (uploadError) {
-          console.error('Error uploading image to Supabase:', {
-            message: uploadError.message,
-            error: uploadError
-          });
-          throw uploadError;
-        }
-
-        if (!uploadData) {
-          console.error('No upload data returned from Supabase');
-          throw new Error('Failed to upload image');
-        }
-
-        // Get the public URL for the uploaded image
-        const { data: publicUrlData } = supabase.storage
-          .from('images')
-          .getPublicUrl(fileName);
-
-        if (!publicUrlData?.publicUrl) {
-          console.error('Failed to get public URL for uploaded image');
-          throw new Error('Failed to get public URL for uploaded image');
-        }
-
-        // Update user's profile image URL using auth system
-        const { error: updateError } = await supabase.auth.updateUser({
-          data: { profile_image_url: publicUrlData.publicUrl }
-        });
-
-        if (updateError) {
-          console.error('Error updating user with image URL:', updateError.message);
-        } else {
-          console.log(`Successfully updated profile image for user: ${userEmail}`);
-        }
+        await databases.updateDocument(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
+          userId,
+          {
+            profile_image_url: fileUrl,
+            updated_at: currentDate
+          }
+        );
+        
+        console.log(`Successfully updated profile image for user: ${userEmail}`);
       } catch (error) {
-        console.error('Failed to process image upload:', {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : undefined
-        });
-        // Continue with user creation even if image upload fails
+        console.error('Image upload failed, continuing without image:', error);
       }
     }
-    
-    console.log(`Payment amount: ${(session.amount_total! / 100).toFixed(2)} ${session.currency}`);
-    console.log(`Customer ID: ${session.customer}`);
-    console.log(`Payment intent: ${session.payment_intent}`);
-    }
 
-    console.log(`Payment amount: ${(session.amount_total! / 100).toFixed(2)} ${session.currency}`);
-    console.log(`Customer ID: ${session.customer}`);
-    console.log(`Payment intent: ${session.payment_intent}`);
+    // Create job
+    await createJob(userId);
 
-  } catch (error) {
-    console.error('Error processing checkout session:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+    console.log('Checkout session processed successfully:', {
+      userId,
+      paymentAmount: session.amount_total ? (session.amount_total / 100).toFixed(2) : 0,
+      currency: session.currency,
+      customerId: session.customer,
+      paymentIntent: session.payment_intent
     });
-    throw error;
-  }
-}
 
-async function handlePaymentIntentSucceeded(event: Stripe.Event) {
-  const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  
-  // Handle successful payment
-  console.log(`Payment succeeded: ${paymentIntent.id}`);
-}
-
-async function handlePaymentIntentFailed(event: Stripe.Event) {
-  const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  
-  // Handle failed payment
-  console.log(`Payment failed: ${paymentIntent.id}`);
-}
-
-async function handlePaymentIntentCreated(event: Stripe.Event) {
-  const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  console.log(`Payment intent created: ${paymentIntent.id}`);
-}
-
-async function handleChargeSucceeded(event: Stripe.Event) {
-  const charge = event.data.object as Stripe.Charge;
-  console.log(`Charge succeeded: ${charge.id}`);
-  
-  // Update payment status in Supabase if needed
-  try {
-    const { data, error: updateError } = await supabase
-      .from('users')
-      .update({ 
-        payment_status: 'succeeded',
-        last_payment_amount: charge.amount,
-        last_payment_currency: charge.currency,
-        last_payment_date: new Date().toISOString()
-      })
-      .eq('stripe_payment_intent', charge.payment_intent);
-    
-    if (updateError) {
-      console.error('Error updating payment status:', {
-        message: updateError.message,
-        details: updateError.details,
-        hint: updateError.hint,
-        code: updateError.code
-      });
-      return;
-    }
-
-    if (data && Array.isArray(data)) {
-      const updatedUser = data[0] as SupabaseUser;
-      if (updatedUser && updatedUser.email) {
-        console.log(`Successfully updated payment status for user: ${updatedUser.email}`);
-      } else {
-        console.error('Updated user data is missing email field');
-      }
-    }
   } catch (error) {
-    console.error('Error handling charge succeeded:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+    console.error('Error in handleCheckoutSessionCompleted:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      sessionId: session.id
     });
-  }
-}
-
-async function handleChargeUpdated(event: Stripe.Event) {
-  const charge = event.data.object as Stripe.Charge;
-  console.log(`Charge updated: ${charge.id}`);
-  
-  // Update payment status in Supabase if needed
-  try {
-    const { data, error: updateError } = await supabase
-      .from('users')
-      .update({ 
-        payment_status: charge.status,
-        last_payment_amount: charge.amount,
-        last_payment_currency: charge.currency,
-        last_payment_date: new Date().toISOString()
-      })
-      .eq('stripe_payment_intent', charge.payment_intent);
-    
-    if (updateError) {
-      console.error('Error updating payment status:', {
-        message: updateError.message,
-        details: updateError.details,
-        hint: updateError.hint,
-        code: updateError.code
-      });
-      return;
-    }
-
-    if (data && Array.isArray(data)) {
-      const updatedUser = data[0] as SupabaseUser;
-      if (updatedUser && updatedUser.email) {
-        console.log(`Successfully updated payment status for user: ${updatedUser.email}`);
-      } else {
-        console.error('Updated user data is missing email field');
-      }
-    }
-  } catch (error) {
-    console.error('Error handling charge updated:', error instanceof Error ? error.message : 'Unknown error');
+    throw error; // Re-throw to be caught by the main handler
   }
 }
