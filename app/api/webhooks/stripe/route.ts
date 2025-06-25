@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { NextResponse } from 'next/server';
-import { Account, Databases, Storage, ID, type Models } from 'node-appwrite';
-import { account, databases, storage } from '@/lib/appwrite';  // Import initialized instances
+import { Databases, Storage, ID, type Models } from 'node-appwrite';
+import { databases, storage } from '@/lib/appwrite';  // Import initialized instances
 import { Query } from 'node-appwrite';
 import crypto from 'crypto';
 
@@ -16,19 +16,20 @@ interface ImageUploadResult {
   fileUrl: string;
 }
 
-interface AppwriteUser extends Models.Document {
+interface JobData extends Models.Document {
   $id: string;
-  email: string;
-  name?: string;
+  stripe_session_id: string;
   stripe_customer_id: string;
   stripe_payment_intent: string;
+  customer_email: string;
+  customer_name: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  payment_status: string;
+  payment_amount: number;
+  payment_currency: string;
+  profile_image_url: string;
   created_at: string;
   updated_at: string;
-  payment_status: string;
-  last_payment_amount: number;
-  last_payment_currency: string;
-  last_payment_date: string;
-  profile_image_url: string;
   [key: string]: any;
 }
 
@@ -43,15 +44,11 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 });
 
 // Helper functions
-const sendMagicLink = async (email: string, userId: string): Promise<void> => {
-  try {
-    const verificationUrl = `${process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : process.env.NEXT_PUBLIC_BASE_URL}/verify`;
-    await account.createMagicURLToken(userId, verificationUrl);
-    console.log(`Magic link sent to ${email}`);
-  } catch (error) {
-    console.error('Error sending magic link:', error);
-    throw new Error('Failed to send magic link');
-  }
+// Generate a random string for job ID
+const generateJobId = (email: string): string => {
+  const randomString = Math.random().toString(36).substring(2, 8);
+  const emailPrefix = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `${emailPrefix}-${randomString}`;
 };
 
 const validateImageUpload = (buffer: Buffer, contentType: string): void => {
@@ -112,98 +109,63 @@ const uploadImageToStorage = async (
   };
 };
 
-const createJob = async (userId: string) => {
+const createJob = async (
+  session: Stripe.Checkout.Session,
+  imageUrl?: string
+) => {
+  const currentDate = new Date().toISOString();
+  const jobId = generateJobId(session.customer_details?.email || 'user');
+  
+  const jobData = {
+    stripe_session_id: session.id,
+    stripe_customer_id: session.customer as string,
+    stripe_payment_intent: session.payment_intent as string,
+    customer_email: session.customer_details?.email || '',
+    customer_name: session.customer_details?.name || '',
+    status: 'pending',
+    payment_status: session.payment_status || 'unpaid',
+    payment_amount: session.amount_total ? session.amount_total / 100 : 0,
+    payment_currency: session.currency?.toUpperCase() || 'USD',
+    profile_image_url: imageUrl || '',
+    created_at: currentDate,
+    updated_at: currentDate,
+  };
+
   return databases.createDocument(
     process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
     'jobs',
-    ID.unique(),
+    jobId,
+    jobData
+  );
+};
+
+const updateJobWithImage = async (
+  jobId: string,
+  imageUrl: string
+): Promise<void> => {
+  await databases.updateDocument(
+    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+    'jobs',
+    jobId,
     {
-      userId,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      profile_image_url: imageUrl,
+      updated_at: new Date().toISOString()
     }
   );
 };
 
-const updateExistingUser = async (
-  userId: string,
-  session: Stripe.Checkout.Session,
-  currentDate: string
-): Promise<void> => {
-  const existingUser = await databases.getDocument(
-    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
-    userId
-  );
-
-  if (!existingUser) return;
-
-  const userData = {
-    ...existingUser,
-    stripe_customer_id: session.customer as string || existingUser.stripe_customer_id,
-    stripe_payment_intent: session.payment_intent as string || existingUser.stripe_payment_intent,
-    updated_at: currentDate,
-    last_payment_amount: session.amount_total ? session.amount_total / 100 : existingUser.last_payment_amount,
-    last_payment_currency: session.currency || existingUser.last_payment_currency || 'usd',
-    last_payment_date: currentDate,
-    name: session.customer_details?.name || existingUser.name || ''
-  };
-
-  await databases.updateDocument(
-    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
-    userId,
-    userData
-  );
-};
-
-const createNewUser = async (
-  email: string,
-  session: Stripe.Checkout.Session,
-  currentDate: string
-): Promise<string> => {
-  const userId = ID.unique();
-  
+const findJobBySessionId = async (sessionId: string): Promise<JobData | null> => {
   try {
-    // Create a new user with email/password (password will be reset via magic link)
-    const tempPassword = crypto.randomBytes(32).toString('hex');
-    const userName = session.customer_details?.name || 'User';
-    await account.create(userId, email, tempPassword, userName);
-    
-    // Create the user document
-    const userData = {
-      email,
-      name: session.customer_details?.name || '',
-      stripe_customer_id: session.customer as string,
-      stripe_payment_intent: session.payment_intent as string,
-      created_at: currentDate,
-      updated_at: currentDate,
-      payment_status: 'pending',
-      last_payment_amount: session.amount_total ? session.amount_total / 100 : 0,
-      last_payment_currency: session.currency || 'usd',
-      last_payment_date: currentDate,
-      profile_image_url: ''
-    };
-    
-    await databases.createDocument(
+    const result = await databases.listDocuments(
       process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-      process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
-      userId,
-      userData
+      'jobs',
+      [Query.equal('stripe_session_id', sessionId)]
     );
     
-    // Send magic link for email verification
-    await sendMagicLink(email, userId);
-    
-    return userId;
+    return result.documents.length > 0 ? result.documents[0] as unknown as JobData : null;
   } catch (error) {
-    console.error('Error creating user:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      error: JSON.stringify(error, Object.getOwnPropertyNames(error))
-    });
-    throw new Error(`Failed to create user account: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('Error finding job by session ID:', error);
+    return null;
   }
 };
 
@@ -337,27 +299,18 @@ export const POST = async (req: Request) => {
 async function handleCheckoutSessionCompleted(event: Stripe.Event) {
   const session = event.data.object as Stripe.Checkout.Session;
   const metadata = session.metadata as CheckoutSessionMetadata || {};
-  const userEmail = session.customer_details?.email;
+  const userEmail = session.customer_details?.email || 'unknown@example.com';
   
-  if (!userEmail) {
-    throw new Error('No email found in Stripe session');
-  }
-
   try {
-    const currentDate = new Date().toISOString();
-    let userId: string;
-
-    // Create new user
-    try {
-      userId = await createNewUser(userEmail, session, currentDate);
-      
-      // Send magic link for email verification
-      await sendMagicLink(userEmail, userId);
-    } catch (error) {
-      console.error('Error creating new user:', error);
-      throw error;
+    // Check if job already exists for this session
+    const existingJob = await findJobBySessionId(session.id);
+    if (existingJob) {
+      console.log('Job already exists for session:', session.id);
+      return;
     }
 
+    let imageUrl = '';
+    
     // Handle image upload if present
     if (metadata?.imageData) {
       try {
@@ -366,28 +319,19 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
           metadata.imageContentType || 'image/jpeg',
           userEmail
         );
-
-        await databases.updateDocument(
-          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-          process.env.NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID!,
-          userId,
-          {
-            profile_image_url: fileUrl,
-            updated_at: currentDate
-          }
-        );
-        
-        console.log(`Successfully updated profile image for user: ${userEmail}`);
+        imageUrl = fileUrl;
+        console.log('Successfully uploaded image for session:', session.id);
       } catch (error) {
         console.error('Image upload failed, continuing without image:', error);
       }
     }
 
     // Create job
-    await createJob(userId);
+    const job = await createJob(session, imageUrl);
 
     console.log('Checkout session processed successfully:', {
-      userId,
+      jobId: job.$id,
+      sessionId: session.id,
       paymentAmount: session.amount_total ? (session.amount_total / 100).toFixed(2) : 0,
       currency: session.currency,
       customerId: session.customer,
