@@ -14,12 +14,21 @@ interface CreateSessionRequest {
       description: string;
     };
   };
-  style?: string;
+  style: string;
+  imageUrls: string[];
+  customerEmail?: string;
 }
 
 export async function POST(req: Request) {
   try {
-    const { price_data, style } = await req.json() as CreateSessionRequest;
+    const { price_data, style, imageUrls, customerEmail } = await req.json() as CreateSessionRequest;
+
+    if (!style || !imageUrls || imageUrls.length === 0) {
+      return NextResponse.json(
+        { error: 'Style and at least one image URL are required' }, 
+        { status: 400 }
+      );
+    }
 
     // Validate price data
     if (!price_data || 
@@ -50,7 +59,15 @@ export async function POST(req: Request) {
       cancel_url: `${process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : process.env.NEXT_PUBLIC_BASE_URL}/failure`,
       metadata: {
         productName: price_data.product_data.name,
-        styleName: style || 'default'
+        selectedStyle: style,
+        imageUrls: JSON.stringify(imageUrls),
+        customerEmail: customerEmail || ''
+      },
+      customer_email: customerEmail,
+      payment_intent_data: {
+        metadata: {
+          session_id: 'cs_' + Math.random().toString(36).substring(2, 15)
+        }
       }
     });
 

@@ -27,6 +27,7 @@ interface JobData extends Models.Document {
   payment_amount: number;
   payment_currency: string;
   selected_style_name: string;
+  image_urls: string[];  // Array to store URLs of the uploaded images
   created_at: Date;
   updated_at: Date;
   // Allows for additional dynamic properties on the object
@@ -37,6 +38,8 @@ interface CheckoutSessionMetadata {
   imageData?: string;
   imageContentType?: string;
   productName?: string;
+  imageUrls?: string | string[];  // Can be string (JSON) or array
+  selectedStyle?: string;
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -109,37 +112,30 @@ const uploadImageToStorage = async (
   };
 };
 
-const createJob = async (
+const createJob = async function createJob(
   session: Stripe.Checkout.Session,
-  imageUrl?: string
-) => {
+  imageUrls: string[] = []
+) {
   try {
 
     const currentDate = new Date().toISOString();
     const jobId = generateJobId(session.customer_details?.email || 'user');
     
-    // Document data with proper typing for Appwrite
-    const jobData = {
-      // System fields required by Appwrite
-      $id: jobId,
-      $createdAt: currentDate,
-      $updatedAt: currentDate,
-      $permissions: [], // Set appropriate permissions if needed
-      
-      // Custom fields
+    const metadata = session.metadata as unknown as CheckoutSessionMetadata || {};
+  
+    const jobData: Partial<JobData> = {
       stripe_session_id: session.id,
       stripe_payment_intent: session.payment_intent as string,
       customer_email: session.customer_details?.email || '',
-      customer_name: session.customer_details?.name || '',
+      customer_name: session.customer_details?.name || 'Unknown',
       job_status: 'pending',
-      payment_status: 'paid',
+      payment_status: session.payment_status,
       payment_amount: session.amount_total ? session.amount_total / 100 : 0,
       payment_currency: session.currency?.toUpperCase() || 'USD',
-      selected_style_name: (session.metadata?.styleName || '').trim(),
-      created_at: currentDate,
-      updated_at: currentDate,
-      // Include image URL if provided
-      ...(imageUrl && { profile_image_url: imageUrl })
+      selected_style_name: metadata.selectedStyle || '',
+      image_urls: imageUrls,
+      created_at: new Date(),
+      updated_at: new Date(),
     };
 
     console.log('Creating job with data:', JSON.stringify(jobData, null, 2));
@@ -196,7 +192,7 @@ const findJobBySessionId = async (sessionId: string): Promise<JobData | null> =>
   try {
     const result = await databases.listDocuments(
       process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-      'jobs',
+      process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
       [Query.equal('stripe_session_id', sessionId)]
     );
     
@@ -210,7 +206,27 @@ const findJobBySessionId = async (sessionId: string): Promise<JobData | null> =>
 // Webhook event handlers
 async function handlePaymentIntentSucceeded(event: Stripe.Event) {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  console.log('PaymentIntent was successful:', paymentIntent.id);
+  console.log('PaymentIntent was successful!', paymentIntent.id);
+  
+  // If this payment intent is associated with a checkout session, we'll handle it there
+  if (paymentIntent.metadata?.session_id) {
+    const session = await stripe.checkout.sessions.retrieve(
+      paymentIntent.metadata.session_id
+    );
+    if (session.payment_status === 'paid') {
+      await handleCheckoutSessionCompleted({
+        id: 'evt_' + Date(),
+        object: 'event',
+        api_version: '2025-05-28.basil',
+        created: Math.floor(Date.now() / 1000),
+        data: { object: session },
+        livemode: false,
+        pending_webhooks: 0,
+        request: null,
+        type: 'checkout.session.completed'
+      } as Stripe.Event);
+    }
+  }
   return { success: true };
 }
 
@@ -254,6 +270,58 @@ interface StorageFileResponse {
   signature: string;
   chunksTotal: number;
   chunksUploaded: number;
+}
+
+async function handleCheckoutSessionCompleted(event: Stripe.Event) {
+  const session = event.data.object as Stripe.Checkout.Session;
+  const metadata = session.metadata as unknown as CheckoutSessionMetadata || {};
+  const userEmail = session.customer_details?.email || 'unknown@example.com';
+  
+  try {
+    // Check if job already exists for this session
+    const existingJob = await findJobBySessionId(session.id);
+    if (existingJob) {
+      console.log('Job already exists for session:', session.id);
+      return;
+    }
+
+    // Get the payment intent to check if payment was successful
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+      session.payment_intent as string
+    );
+
+    if (paymentIntent.status !== 'succeeded') {
+      console.log('Payment not successful, skipping job creation');
+      return;
+    }
+
+    // Get image URLs from metadata
+    let imageUrls: string[] = [];
+    if (metadata.imageUrls) {
+      try {
+        // Handle both string (JSON) and array formats
+        imageUrls = typeof metadata.imageUrls === 'string' 
+          ? JSON.parse(metadata.imageUrls) 
+          : metadata.imageUrls;
+        
+        // Ensure it's an array
+        if (!Array.isArray(imageUrls)) {
+          imageUrls = [];
+        }
+      } catch (error) {
+        console.error('Error parsing image URLs:', error);
+        imageUrls = [];
+      }
+    }
+    
+    // Create the job with the session and image data
+    await createJob(session, imageUrls);
+    
+    console.log('Successfully created job for session:', session.id, 'with', imageUrls.length, 'images');
+  } catch (error) {
+    console.error('Error in handleCheckoutSessionCompleted:', error);
+    throw error;
+  }
 }
 
 export const POST = async (req: Request) => {
@@ -333,61 +401,3 @@ export const POST = async (req: Request) => {
     );
   }
 };
-
-async function handleCheckoutSessionCompleted(event: Stripe.Event) {
-  const session = event.data.object as Stripe.Checkout.Session;
-  const metadata = session.metadata as CheckoutSessionMetadata || {};
-  const userEmail = session.customer_details?.email || 'unknown@example.com';
-  
-
-
-  try {
-    // Check if job already exists for this session
-    const existingJob = await findJobBySessionId(session.id);
-    if (existingJob) {
-      console.log('Job already exists for session:', session.id);
-      return;
-    }
-
-    let imageUrl = '';
-    
-    // Handle image upload if present
-    if (metadata?.imageData) {
-      try {
-        const { fileUrl } = await uploadImageToStorage(
-          metadata.imageData,
-          metadata.imageContentType || 'image/jpeg',
-          userEmail
-        );
-        imageUrl = fileUrl;
-        console.log('Successfully uploaded image for session:', session.id);
-      } catch (error) {
-        console.error('Image upload failed, continuing without image:', error);
-      }
-    }
-
-    // Create job
-    const job = await createJob(session, imageUrl);
-
-    if (!job) {
-      throw new Error('Failed to create job: No job data returned');
-    }
-
-    console.log('Checkout session processed successfully:', {
-      jobId: job.$id,
-      sessionId: session.id,
-      paymentAmount: session.amount_total ? (session.amount_total / 100).toFixed(2) : 0,
-      currency: session.currency,
-      customerId: session.customer,
-      paymentIntent: session.payment_intent
-    });
-
-  } catch (error) {
-    console.error('Error in handleCheckoutSessionCompleted:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      sessionId: session.id
-    });
-    throw error; // Re-throw to be caught by the main handler
-  }
-}

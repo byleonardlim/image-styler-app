@@ -12,6 +12,7 @@ export default function Page() {
   const [style, setStyle] = useState('ghibli');
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [fileIds, setFileIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
@@ -118,7 +119,14 @@ export default function Page() {
         }
       });
 
-      // Update state with server URLs
+      // Update state with server URLs - simply append all new URLs
+      setUploadedImageUrls(prev => {
+        // Filter out any undefined/null values and append new URLs
+        const newUrls = serverFileUrls.filter(url => url);
+        return [...prev, ...newUrls];
+      });
+      
+      // Update previews with server URLs
       setImagePreviews(prev => {
         const updatedPreviews = [...prev];
         serverFileUrls.forEach((url, i) => {
@@ -217,9 +225,15 @@ export default function Page() {
     try {
       // Store the checkout data in localStorage
       localStorage.setItem('checkoutData', JSON.stringify({
-        images,
-        style
+        images: imagePreviews,
+        style,
+        fileIds
       }));
+
+      // Ensure we have all the uploaded URLs
+      const urlsToSubmit = uploadedImageUrls.length === images.length 
+        ? uploadedImageUrls 
+        : imagePreviews; // Fallback to preview URLs if upload URLs are missing
 
       // Create checkout session with price data
       const response = await fetch('/api/payment', {
@@ -237,6 +251,8 @@ export default function Page() {
             },
           },
           style: style,
+          imageUrls: urlsToSubmit, // Use the uploaded Appwrite URLs or fallback to preview URLs
+          customerEmail: 'user@example.com', // You might want to collect this from the user
         }),
       });
 
