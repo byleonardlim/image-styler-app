@@ -101,6 +101,7 @@ export default function Page() {
               description: `${images.length} images with ${style} style`,
             },
           },
+          style: style,
         }),
       });
 

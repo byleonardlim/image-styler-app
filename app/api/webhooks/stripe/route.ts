@@ -3,12 +3,11 @@ import { NextResponse } from 'next/server';
 import { Databases, Storage, ID, type Models } from 'node-appwrite';
 import { databases, storage } from '@/lib/appwrite';  // Import initialized instances
 import { Query } from 'node-appwrite';
-import crypto from 'crypto';
+import { nanoid } from 'nanoid';
 
 // Constants
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const VALID_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
-const PIN_LENGTH = 8;
 
 // Types
 interface ImageUploadResult {
@@ -17,19 +16,20 @@ interface ImageUploadResult {
 }
 
 interface JobData extends Models.Document {
+  // $id is the unique document ID in Appwrite, automatically assigned
   $id: string;
   stripe_session_id: string;
-  stripe_customer_id: string;
   stripe_payment_intent: string;
   customer_email: string;
   customer_name: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  job_status: 'pending' | 'processing' | 'completed' | 'failed';
   payment_status: string;
   payment_amount: number;
   payment_currency: string;
-  profile_image_url: string;
-  created_at: string;
-  updated_at: string;
+  selected_style_name: string;
+  created_at: Date;
+  updated_at: Date;
+  // Allows for additional dynamic properties on the object
   [key: string]: any;
 }
 
@@ -44,11 +44,11 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 });
 
 // Helper functions
-// Generate a random string for job ID
+// Generate a unique job ID using nanoid
 const generateJobId = (email: string): string => {
-  const randomString = Math.random().toString(36).substring(2, 8);
-  const emailPrefix = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-  return `${emailPrefix}-${randomString}`;
+  const emailPrefix = email.split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const uniqueId = nanoid(10); // Generates a 10-character ID
+  return `${emailPrefix}-${uniqueId}`;
 };
 
 const validateImageUpload = (buffer: Buffer, contentType: string): void => {
@@ -113,30 +113,68 @@ const createJob = async (
   session: Stripe.Checkout.Session,
   imageUrl?: string
 ) => {
-  const currentDate = new Date().toISOString();
-  const jobId = generateJobId(session.customer_details?.email || 'user');
-  
-  const jobData = {
-    stripe_session_id: session.id,
-    stripe_customer_id: session.customer as string,
-    stripe_payment_intent: session.payment_intent as string,
-    customer_email: session.customer_details?.email || '',
-    customer_name: session.customer_details?.name || '',
-    status: 'pending',
-    payment_status: session.payment_status || 'unpaid',
-    payment_amount: session.amount_total ? session.amount_total / 100 : 0,
-    payment_currency: session.currency?.toUpperCase() || 'USD',
-    profile_image_url: imageUrl || '',
-    created_at: currentDate,
-    updated_at: currentDate,
-  };
+  try {
 
-  return databases.createDocument(
-    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    'jobs',
-    jobId,
-    jobData
-  );
+    const currentDate = new Date().toISOString();
+    const jobId = generateJobId(session.customer_details?.email || 'user');
+    
+    // Document data with proper typing for Appwrite
+    const jobData = {
+      // System fields required by Appwrite
+      $id: jobId,
+      $createdAt: currentDate,
+      $updatedAt: currentDate,
+      $permissions: [], // Set appropriate permissions if needed
+      
+      // Custom fields
+      stripe_session_id: session.id,
+      stripe_payment_intent: session.payment_intent as string,
+      customer_email: session.customer_details?.email || '',
+      customer_name: session.customer_details?.name || '',
+      job_status: 'pending',
+      payment_status: 'paid',
+      payment_amount: session.amount_total ? session.amount_total / 100 : 0,
+      payment_currency: session.currency?.toUpperCase() || 'USD',
+      selected_style_name: (session.metadata?.styleName || '').trim(),
+      created_at: currentDate,
+      updated_at: currentDate,
+      // Include image URL if provided
+      ...(imageUrl && { profile_image_url: imageUrl })
+    };
+
+    console.log('Creating job with data:', JSON.stringify(jobData, null, 2));
+    console.log('Database ID:', process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID);
+    console.log('Collection ID:', process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID);
+
+    // Create document in Appwrite
+    const result = await databases.createDocument(
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
+      jobId,
+      jobData
+    );
+
+    console.log('Document created successfully:', result.$id);
+    return result;
+  } catch (error: unknown) {
+    const errorData = error as {
+      message?: string;
+      code?: string | number;
+      type?: string;
+      response?: any;
+      stack?: string;
+    };
+    
+    console.error('Error in createJob:', {
+      message: errorData.message || 'Unknown error',
+      code: errorData.code,
+      type: errorData.type,
+      response: errorData.response ? JSON.stringify(errorData.response) : undefined,
+      stack: errorData.stack
+    });
+    
+    throw new Error(`Failed to create job: ${errorData.message}`);
+  }
 };
 
 const updateJobWithImage = async (
@@ -145,7 +183,7 @@ const updateJobWithImage = async (
 ): Promise<void> => {
   await databases.updateDocument(
     process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    'jobs',
+    process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
     jobId,
     {
       profile_image_url: imageUrl,
@@ -301,6 +339,8 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
   const metadata = session.metadata as CheckoutSessionMetadata || {};
   const userEmail = session.customer_details?.email || 'unknown@example.com';
   
+
+
   try {
     // Check if job already exists for this session
     const existingJob = await findJobBySessionId(session.id);
@@ -328,6 +368,10 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
 
     // Create job
     const job = await createJob(session, imageUrl);
+
+    if (!job) {
+      throw new Error('Failed to create job: No job data returned');
+    }
 
     console.log('Checkout session processed successfully:', {
       jobId: job.$id,

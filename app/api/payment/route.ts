@@ -14,11 +14,12 @@ interface CreateSessionRequest {
       description: string;
     };
   };
+  style?: string;
 }
 
 export async function POST(req: Request) {
   try {
-    const { price_data } = await req.json();
+    const { price_data, style } = await req.json() as CreateSessionRequest;
 
     // Validate price data
     if (!price_data || 
@@ -48,7 +49,8 @@ export async function POST(req: Request) {
       success_url: `${process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : process.env.NEXT_PUBLIC_BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : process.env.NEXT_PUBLIC_BASE_URL}/failure`,
       metadata: {
-        productName: price_data.product_data.name
+        productName: price_data.product_data.name,
+        styleName: style || 'default'
       }
     });
 
