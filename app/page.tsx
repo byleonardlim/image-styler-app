@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Upload } from 'lucide-react';
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -11,7 +12,9 @@ export default function Page() {
   const [style, setStyle] = useState('ghibli');
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [fileIds, setFileIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [totalPrice, setTotalPrice] = useState(0);
 
@@ -26,9 +29,12 @@ export default function Page() {
     setTotalPrice(calculateTotal());
   }, [images]);
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
+
+    // Reset the input value to allow re-uploading the same file
+    event.target.value = '';
 
     const newImages = Array.from(files);
     const validImages = newImages.filter(file => ['image/jpeg', 'image/png', 'image/webp'].includes(file.type));
@@ -38,34 +44,163 @@ export default function Page() {
       return;
     }
 
-    // Create previews
-    const newPreviews = validImages.map(file => {
-      return URL.createObjectURL(file);
-    });
+    try {
+      setIsLoading(true);
+      setError(null);
 
-    setImages([...images, ...validImages]);
-    setImagePreviews([...imagePreviews, ...newPreviews]);
+      // Create preview URLs immediately
+      const previews = validImages.map(file => URL.createObjectURL(file));
+      
+      // Update state with previews first for immediate UI update
+      const newImageObjects = validImages.map((file, index) => ({
+        file,
+        preview: previews[index],
+        id: `local-${Date.now()}-${index}`
+      }));
 
-    // Calculate price
-    const basePrice = Math.min(images.length + validImages.length, 5) * 4;
-    const additionalPrice = Math.max(images.length + validImages.length - 5, 0) * 3;
-    setTotalPrice(basePrice + additionalPrice);
+      setImages(prev => [...prev, ...validImages]);
+      setImagePreviews(prev => [...prev, ...previews]);
+
+      // Upload each file to Appwrite
+      const uploadPromises = validImages.map(async (file, index) => {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+            headers: {
+              'Accept': 'application/json',
+            },
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Failed to upload ${file.name}`);
+          }
+
+          const result = await response.json();
+          
+          // Ensure the file URL is properly formatted
+          const fileUrl = result.fileUrl || 
+            `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${result.fileId}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
+          
+          return {
+            success: true,
+            fileId: result.fileId,
+            fileUrl,
+            index
+          };
+        } catch (error) {
+          console.error(`Error uploading ${file.name}:`, error);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Upload failed',
+            index
+          };
+        }
+      });
+
+      const uploadResults = await Promise.all(uploadPromises);
+      
+      // Process upload results
+      const newFileIds: string[] = [];
+      const serverFileUrls: string[] = [];
+      
+      uploadResults.forEach((result, i) => {
+        if (result.success) {
+          newFileIds[result.index] = result.fileId;
+          serverFileUrls[result.index] = result.fileUrl;
+          console.log(`Upload successful for image ${i}:`, result.fileUrl);
+        } else {
+          console.error(`Upload failed for image ${i}:`, result.error);
+        }
+      });
+
+      // Update state with server URLs
+      setImagePreviews(prev => {
+        const updatedPreviews = [...prev];
+        serverFileUrls.forEach((url, i) => {
+          if (url) {
+            const previewIndex = updatedPreviews.length - validImages.length + i;
+            if (previewIndex >= 0 && previewIndex < updatedPreviews.length) {
+              // Only revoke the blob URL if it's a blob URL
+              if (updatedPreviews[previewIndex]?.startsWith('blob:')) {
+                URL.revokeObjectURL(updatedPreviews[previewIndex]);
+              }
+              updatedPreviews[previewIndex] = url;
+            }
+          }
+        });
+        return updatedPreviews;
+      });
+      
+      // Only keep successful uploads
+      const successfulFileIds = newFileIds.filter(Boolean);
+      setFileIds(prev => [...prev, ...successfulFileIds]);
+
+      // Calculate price based on total number of images
+      const totalImages = images.length + validImages.length;
+      const basePrice = Math.min(totalImages, 5) * 4;
+      const additionalPrice = Math.max(totalImages - 5, 0) * 3;
+      setTotalPrice(basePrice + additionalPrice);
+    } catch (err) {
+      console.error('Error in handleImageUpload:', err);
+      setError(err instanceof Error ? err.message : 'Failed to upload images');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const removeImage = (index: number) => {
-    const newImages = [...images];
-    const newPreviews = [...imagePreviews];
-    
-    newImages.splice(index, 1);
-    newPreviews.splice(index, 1);
+  const removeImage = async (index: number) => {
+    const fileIdToDelete = fileIds[index];
+    if (!fileIdToDelete) return;
 
-    setImages(newImages);
-    setImagePreviews(newPreviews);
+    try {
+      // Add to deleting set
+      setDeletingIds(prev => new Set(prev).add(fileIdToDelete));
+      
+      // Delete the file from storage
+      const response = await fetch('/api/delete', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fileId: fileIdToDelete }),
+      });
 
-    // Recalculate price
-    const basePrice = Math.min(newImages.length, 5) * 4;
-    const additionalPrice = Math.max(newImages.length - 5, 0) * 3;
-    setTotalPrice(basePrice + additionalPrice);
+      if (!response.ok) {
+        throw new Error('Failed to delete file from storage');
+      }
+
+      // Update local state
+      const newImages = [...images];
+      const newPreviews = [...imagePreviews];
+      const newFileIds = [...fileIds];
+      
+      newImages.splice(index, 1);
+      newPreviews.splice(index, 1);
+      newFileIds.splice(index, 1);
+
+      setImages(newImages);
+      setImagePreviews(newPreviews);
+      setFileIds(newFileIds);
+
+      // Recalculate price
+      const basePrice = Math.min(newImages.length, 5) * 4;
+      const additionalPrice = Math.max(newImages.length - 5, 0) * 3;
+      setTotalPrice(basePrice + additionalPrice);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete image');
+    } finally {
+      // Remove from deleting set
+      setDeletingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(fileIdToDelete);
+        return newSet;
+      });
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -134,14 +269,41 @@ export default function Page() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Upload Images (Max 10)</Label>
-              <Input
-                type="file"
-                id="images"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                onChange={handleImageUpload}
-                disabled={isLoading}
-              />
+              <div className="relative">
+                <label
+                  htmlFor="images"
+                  className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer hover:bg-accent/50 transition-colors ${isLoading ? 'opacity-50 cursor-wait' : ''}`}
+                >
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6 px-4 text-center">
+                    {isLoading ? (
+                      <>
+                        <div className="w-8 h-8 mb-2 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-sm text-muted-foreground">Uploading files...</p>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-8 h-8 mb-2 text-muted-foreground" />
+                        <p className="mb-1 text-sm text-muted-foreground">
+                          <span className="font-semibold">Click to upload</span> or drag and drop
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          JPEG, PNG, or WebP (max 10 images)
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <input
+                    id="images"
+                    name="images"
+                    type="file"
+                    className="hidden"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    onChange={handleImageUpload}
+                    disabled={isLoading}
+                  />
+                </label>
+              </div>
               {imagePreviews.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
                   {imagePreviews.map((preview, index) => (
@@ -152,10 +314,18 @@ export default function Page() {
                         className="max-h-32 w-full rounded-lg object-cover"
                       />
                       <button
-                        onClick={() => removeImage(index)}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeImage(index);
+                        }}
+                        disabled={deletingIds.has(fileIds[index])}
+                        className={`absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-opacity ${deletingIds.has(fileIds[index]) ? 'opacity-50 cursor-wait' : ''}`}
                       >
-                        <X className="h-4 w-4" />
+                        {deletingIds.has(fileIds[index]) ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <X className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
                   ))}
