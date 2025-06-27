@@ -206,27 +206,75 @@ const findJobBySessionId = async (sessionId: string): Promise<JobData | null> =>
 // Webhook event handlers
 async function handlePaymentIntentSucceeded(event: Stripe.Event) {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  console.log('PaymentIntent was successful!', paymentIntent.id);
+  console.log('PaymentIntent was successful!', {
+    paymentIntentId: paymentIntent.id,
+    amount: paymentIntent.amount,
+    currency: paymentIntent.currency,
+    metadata: paymentIntent.metadata
+  });
   
   // If this payment intent is associated with a checkout session, we'll handle it there
   if (paymentIntent.metadata?.session_id) {
-    const session = await stripe.checkout.sessions.retrieve(
-      paymentIntent.metadata.session_id
-    );
-    if (session.payment_status === 'paid') {
-      await handleCheckoutSessionCompleted({
-        id: 'evt_' + Date(),
-        object: 'event',
-        api_version: '2025-05-28.basil',
-        created: Math.floor(Date.now() / 1000),
-        data: { object: session },
-        livemode: false,
-        pending_webhooks: 0,
-        request: null,
-        type: 'checkout.session.completed'
-      } as Stripe.Event);
+    const sessionId = paymentIntent.metadata.session_id;
+    console.log('Processing checkout session:', sessionId);
+    
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ['line_items']
+      });
+      
+      console.log('Retrieved session:', {
+        sessionId: session.id,
+        paymentStatus: session.payment_status,
+        customerEmail: session.customer_details?.email
+      });
+      
+      if (session.payment_status === 'paid') {
+        try {
+          await handleCheckoutSessionCompleted({
+            id: 'evt_' + Date(),
+            object: 'event',
+            api_version: '2025-05-28.basil',
+            created: Math.floor(Date.now() / 1000),
+            data: { object: session },
+            livemode: false,
+            pending_webhooks: 0,
+            request: null,
+            type: 'checkout.session.completed'
+          } as Stripe.Event);
+          console.log('Successfully processed checkout session:', sessionId);
+        } catch (error) {
+          console.error('Error in handleCheckoutSessionCompleted:', {
+            error,
+            sessionId,
+            paymentIntentId: paymentIntent.id
+          });
+          throw error; // Re-throw to be caught by the outer try-catch
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error('Error retrieving checkout session:', {
+          error: error.message,
+          sessionId,
+          paymentIntentId: paymentIntent.id,
+          stack: error.stack
+        });
+        
+        if ('type' in error && 'code' in error && 
+            error.type === 'StripeInvalidRequestError' && 
+            error.code === 'resource_missing') {
+          console.warn('Checkout session not found, but payment was successful. This might indicate a stale webhook event.');
+          // Consider creating a support ticket or logging to an error tracking service
+          return { success: true, warning: 'Checkout session not found' };
+        }
+      }
+      throw error; // Re-throw the error if it's not a missing session
     }
+  } else {
+    console.log('No session_id found in payment intent metadata');
   }
+  
   return { success: true };
 }
 
