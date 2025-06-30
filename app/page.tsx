@@ -5,7 +5,6 @@ import { Upload } from 'lucide-react';
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
 import { X } from 'lucide-react';
 
 export default function Page() {
@@ -18,6 +17,7 @@ export default function Page() {
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [totalPrice, setTotalPrice] = useState(0);
+  const [urlMapping, setUrlMapping] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const calculateTotal = () => {
@@ -53,12 +53,6 @@ export default function Page() {
       const previews = validImages.map(file => URL.createObjectURL(file));
       
       // Update state with previews first for immediate UI update
-      const newImageObjects = validImages.map((file, index) => ({
-        file,
-        preview: previews[index],
-        id: `local-${Date.now()}-${index}`
-      }));
-
       setImages(prev => [...prev, ...validImages]);
       setImagePreviews(prev => [...prev, ...previews]);
 
@@ -119,29 +113,26 @@ export default function Page() {
         }
       });
 
-      // Update state with server URLs - simply append all new URLs
-      setUploadedImageUrls(prev => {
-        // Filter out any undefined/null values and append new URLs
-        const newUrls = serverFileUrls.filter(url => url);
-        return [...prev, ...newUrls];
-      });
-      
-      // Update previews with server URLs
-      setImagePreviews(prev => {
-        const updatedPreviews = [...prev];
+      // Update URL mapping with new server URLs
+      setUrlMapping(prev => {
+        const newMapping = { ...prev };
         serverFileUrls.forEach((url, i) => {
           if (url) {
-            const previewIndex = updatedPreviews.length - validImages.length + i;
-            if (previewIndex >= 0 && previewIndex < updatedPreviews.length) {
-              // Only revoke the blob URL if it's a blob URL
-              if (updatedPreviews[previewIndex]?.startsWith('blob:')) {
-                URL.revokeObjectURL(updatedPreviews[previewIndex]);
-              }
-              updatedPreviews[previewIndex] = url;
+            const previewUrl = previews[i];
+            if (previewUrl) {
+              newMapping[previewUrl] = url;
+              // Revoke the blob URL since we have the server URL now
+              URL.revokeObjectURL(previewUrl);
             }
           }
         });
-        return updatedPreviews;
+        return newMapping;
+      });
+      
+      // Update server URLs for submission
+      setUploadedImageUrls(prev => {
+        const newUrls = serverFileUrls.filter(url => url);
+        return [...prev, ...newUrls];
       });
       
       // Only keep successful uploads
@@ -163,7 +154,9 @@ export default function Page() {
 
   const removeImage = async (index: number) => {
     const fileIdToDelete = fileIds[index];
-    if (!fileIdToDelete) return;
+    const previewToDelete = imagePreviews[index];
+    
+    if (!fileIdToDelete || !previewToDelete) return;
 
     try {
       // Add to deleting set
@@ -182,6 +175,11 @@ export default function Page() {
         throw new Error('Failed to delete file from storage');
       }
 
+      // Clean up blob URL if it exists
+      if (previewToDelete.startsWith('blob:')) {
+        URL.revokeObjectURL(previewToDelete);
+      }
+
       // Update local state
       const newImages = [...images];
       const newPreviews = [...imagePreviews];
@@ -194,6 +192,13 @@ export default function Page() {
       setImages(newImages);
       setImagePreviews(newPreviews);
       setFileIds(newFileIds);
+      
+      // Clean up URL mapping
+      setUrlMapping(prev => {
+        const newMapping = { ...prev };
+        delete newMapping[previewToDelete];
+        return newMapping;
+      });
 
       // Recalculate price
       const basePrice = Math.min(newImages.length, 5) * 4;
@@ -322,12 +327,21 @@ export default function Page() {
               </div>
               {imagePreviews.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
-                  {imagePreviews.map((preview, index) => (
+                  {imagePreviews.map((preview, index) => {
+                    // Use the server URL if available, otherwise use the blob URL
+                    const imageUrl = urlMapping[preview] || preview;
+                    return (
                     <div key={preview} className="relative">
                       <img
-                        src={preview}
+                        src={imageUrl}
                         alt={`Preview ${index + 1}`}
                         className="max-h-32 w-full rounded-lg object-cover"
+                        onLoad={() => {
+                          // Clean up blob URL if we have a server URL
+                          if (urlMapping[preview] && preview.startsWith('blob:')) {
+                            URL.revokeObjectURL(preview);
+                          }
+                        }}
                       />
                       <button
                         onClick={(e) => {
@@ -344,7 +358,7 @@ export default function Page() {
                         )}
                       </button>
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
               <div className="mt-4">
@@ -363,30 +377,30 @@ export default function Page() {
               <div className="inline-flex rounded-md shadow-sm" role="group">
                 <Button
                   type="button"
-                  variant={style === 'ghibli' ? "default" : "outline"}
-                  onClick={() => setStyle('ghibli')}
+                  variant={style === 'Lunora' ? "default" : "outline"}
+                  onClick={() => setStyle('Lunora')}
                   className="rounded-r-none"
                   disabled={isLoading}
                 >
-                  Studio Ghibli Style
+                  Lunora
                 </Button>
                 <Button
                   type="button"
-                  variant={style === 'family-guy' ? "default" : "outline"}
-                  onClick={() => setStyle('family-guy')}
+                  variant={style === 'Suburbia' ? "default" : "outline"}
+                  onClick={() => setStyle('Suburbia')}
                   className="rounded-l-none -ml-px"
                   disabled={isLoading}
                 >
-                  Family Guy Style
+                  Suburbia
                 </Button>
                 <Button
                   type="button"
-                  variant={style === 'disney' ? "default" : "outline"}
-                  onClick={() => setStyle('disney')}
+                  variant={style === 'Magicelle' ? "default" : "outline"}
+                  onClick={() => setStyle('Magicelle')}
                   className="rounded-l-none -ml-px"
                   disabled={isLoading}
                 >
-                  Disney Style
+                  Magicelle
                 </Button>
               </div>
             </div>
