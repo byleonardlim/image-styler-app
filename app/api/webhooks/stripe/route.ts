@@ -372,11 +372,33 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
   }
 }
 
+// Helper function to check required environment variables
+const checkRequiredEnvVars = () => {
+  const requiredVars = [
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'NEXT_PUBLIC_APPWRITE_ENDPOINT',
+    'NEXT_PUBLIC_APPWRITE_PROJECT_ID',
+    'APPWRITE_API_KEY',
+    'NEXT_PUBLIC_APPWRITE_DATABASE_ID',
+    'NEXT_PUBLIC_APPWRITE_COLLECTION_ID'
+  ];
+
+  const missingVars = requiredVars.filter(varName => !process.env[varName]);
+  if (missingVars.length > 0) {
+    throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  }
+};
+
 export const POST = async (req: Request) => {
   try {
+    // Check for required environment variables
+    checkRequiredEnvVars();
+    
     // Get webhook secret from environment
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
+      console.error('STRIPE_WEBHOOK_SECRET is not set');
       return NextResponse.json(
         { error: 'Webhook secret not configured' },
         { status: 500 }
@@ -385,66 +407,128 @@ export const POST = async (req: Request) => {
 
     // Parse the request body as raw text
     const sig = req.headers.get('stripe-signature');
-    const body = await req.text();
-
     if (!sig) {
+      console.error('No Stripe signature found in request headers');
       return NextResponse.json(
         { error: 'No Stripe signature' },
         { status: 400 }
       );
     }
-
+    
+    const body = await req.text();
+    if (!body) {
+      console.error('Empty request body');
+      return NextResponse.json(
+        { error: 'Empty request body' },
+        { status: 400 }
+      );
+    }
 
     // Verify the webhook signature
     let event;
     try {
+      console.log('Verifying webhook signature...');
       event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+      console.log(`Received webhook event: ${event.type} (${event.id})`);
     } catch (err) {
-      console.error('Stripe webhook signature verification failed:', err);
+      const error = err as Error;
+      console.error('Stripe webhook signature verification failed:', {
+        error: error.message,
+        stack: error.stack,
+        headers: Object.fromEntries(req.headers.entries())
+      });
       return NextResponse.json(
-        { error: 'Invalid webhook signature' },
+        { 
+          error: 'Invalid webhook signature',
+          details: error.message 
+        },
         { status: 400 }
       );
     }
 
     // Handle the event
-    switch (event.type) {
-      case 'checkout.session.completed':
-        await handleCheckoutSessionCompleted(event);
-        break;
+    try {
+      console.log(`Processing event type: ${event.type}`);
+      
+      switch (event.type) {
+        case 'checkout.session.completed':
+          console.log('Handling checkout.session.completed event');
+          await handleCheckoutSessionCompleted(event);
+          break;
 
-      case 'payment_intent.succeeded':
-        await handlePaymentIntentSucceeded(event);
-        break;
+        case 'payment_intent.succeeded':
+          console.log('Handling payment_intent.succeeded event');
+          await handlePaymentIntentSucceeded(event);
+          break;
 
-      case 'payment_intent.payment_failed':
-        await handlePaymentIntentFailed(event);
-        break;
+        case 'payment_intent.payment_failed':
+          console.log('Handling payment_intent.payment_failed event');
+          await handlePaymentIntentFailed(event);
+          break;
 
-      case 'payment_intent.created':
-        await handlePaymentIntentCreated(event);
-        break;
+        case 'payment_intent.created':
+          console.log('Handling payment_intent.created event');
+          await handlePaymentIntentCreated(event);
+          break;
 
-      case 'charge.succeeded':
-        await handleChargeSucceeded(event);
-        break;
+        case 'charge.succeeded':
+          console.log('Handling charge.succeeded event');
+          await handleChargeSucceeded(event);
+          break;
 
-      case 'charge.updated':
-        await handleChargeUpdated(event);
-        break;
+        case 'charge.updated':
+          console.log('Handling charge.updated event');
+          await handleChargeUpdated(event);
+          break;
 
-      default:
-        console.log(`Unhandled event type: ${event.type}`);
-        break;
+        default:
+          console.log(`Unhandled event type: ${event.type}`);
+          break;
+      }
+
+      console.log(`Successfully processed event: ${event.type}`);
+      return NextResponse.json({ 
+        received: true,
+        eventType: event.type,
+        eventId: event.id 
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      console.error('Stripe webhook error:', {
+        message: errorMessage,
+        stack: errorStack,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Don't expose internal error details in production
+      const isProduction = process.env.NODE_ENV === 'production';
+      const errorResponse = isProduction 
+        ? { error: 'Internal server error' } 
+        : { 
+            error: errorMessage,
+            stack: errorStack,
+            type: error?.constructor?.name
+          };
+      
+      return NextResponse.json(
+        errorResponse,
+        { status: 500 }
+      );
     }
-
-    return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('Stripe webhook error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Stripe webhook error:', errorMessage);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    console.error('Unexpected error in webhook handler:', {
+      message: errorMessage,
+      stack: errorStack,
+      timestamp: new Date().toISOString()
+    });
+    
     return NextResponse.json(
-      { error: errorMessage },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
