@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, Loader2, X } from 'lucide-react';
 import { Label } from "@/components/ui/label";
@@ -11,9 +11,11 @@ interface ImageUploaderProps {
   onError: (error: string | null) => void;
   isLoading: boolean;
   setIsLoading: (isLoading: boolean) => void;
-  style: string;
+  style?: string | null;
   totalPrice: number;
 }
+
+import { useToast } from '@/components/ui/toast';
 
 export default function ImageUploader({ 
   onImagesChange, 
@@ -23,10 +25,12 @@ export default function ImageUploader({
   style, 
   totalPrice 
 }: ImageUploaderProps) {
+  const { showToast } = useToast();
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [fileIds, setFileIds] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [uploadProgress, setUploadProgress] = useState<Record<number, boolean>>({});
   const [urlMapping, setUrlMapping] = useState<Record<string, string>>({});
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
 
@@ -36,7 +40,7 @@ export default function ImageUploader({
     );
 
     if (images.length + validImages.length > 10) {
-      onError('Maximum 10 images allowed');
+      showToast('Maximum 10 images allowed', { type: 'destructive' });
       return;
     }
 
@@ -74,24 +78,54 @@ export default function ImageUploader({
           const formData = new FormData();
           formData.append('file', file);
           
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-            headers: {
-              'Accept': 'application/json',
-            },
+          const xhr = new XMLHttpRequest();
+          
+          // Create a promise that resolves when upload is complete
+          const uploadPromise = new Promise((resolve, reject) => {
+            xhr.upload.onprogress = (event) => {
+              if (event.lengthComputable) {
+                // Set upload in progress
+                setUploadProgress(prev => ({
+                  ...prev,
+                  [images.length + index]: true
+                }));
+              }
+            };
+
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(JSON.parse(xhr.responseText));
+              } else {
+                reject(new Error(xhr.statusText));
+              }
+            };
+
+            xhr.onerror = () => {
+              reject(new Error('Network error'));
+            };
           });
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Failed to upload ${file.name}`);
-          }
-
-          const result = await response.json();
+          
+          // Start the upload
+          xhr.open('POST', '/api/upload', true);
+          xhr.setRequestHeader('Accept', 'application/json');
+          xhr.send(formData);
+          
+          const result = await uploadPromise as {
+            fileId: string;
+            fileUrl?: string;
+            [key: string]: any;
+          };
           
           // Ensure the file URL is properly formatted
           const fileUrl = result.fileUrl || 
             `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${result.fileId}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
+          
+          // Clear the progress when done
+          setUploadProgress(prev => {
+            const newProgress = {...prev};
+            delete newProgress[images.length + index];
+            return newProgress;
+          });
           
           return {
             success: true,
@@ -100,10 +134,11 @@ export default function ImageUploader({
             index: images.length + index
           };
         } catch (error) {
-          console.error(`Error uploading ${file.name}:`, error);
+          const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+          showToast(`Failed to upload ${file.name}: ${errorMessage}`, { type: 'destructive' });
           return {
             success: false,
-            error: error instanceof Error ? error.message : 'Upload failed',
+            error: errorMessage,
             index: images.length + index
           };
         }
@@ -116,16 +151,19 @@ export default function ImageUploader({
       const newUploadedImageUrls: string[] = [];
       const newUrlMapping: Record<string, string> = {};
       
-      results.forEach((result, i) => {
-        if (result.success) {
+      results.forEach((result) => {
+        if (result.success && result.fileId && result.fileUrl) {
           newFileIds.push(result.fileId);
           newUploadedImageUrls.push(result.fileUrl);
           newUrlMapping[result.fileId] = result.fileUrl;
-        } else {
+        } else if (!result.success) {
           // Remove failed uploads from previews
-          setImagePreviews(prev => prev.filter((_, idx) => idx !== result.index));
-          setImages(prev => prev.filter((_, idx) => idx !== result.index));
-          onError(`Failed to upload some images: ${result.error}`);
+          const index = result.index ?? -1;
+          if (index >= 0) {
+            setImagePreviews(prev => prev.filter((_, idx) => idx !== index));
+            setImages(prev => prev.filter((_, idx) => idx !== index));
+          }
+          showToast(`Failed to upload some images: ${result.error || 'Unknown error'}`, { type: 'destructive' });
         }
       });
 
@@ -142,7 +180,7 @@ export default function ImageUploader({
 
     } catch (error) {
       console.error('Error handling image uploads:', error);
-      onError('An error occurred while processing your images');
+      showToast('An error occurred while processing your images', { type: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -200,7 +238,7 @@ export default function ImageUploader({
       onImagesChange(newImages, newPreviews, newFileIds);
       
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Failed to delete image');
+      showToast(err instanceof Error ? err.message : 'Failed to delete image', { type: 'destructive' });
     } finally {
       // Remove from deleting set
       setDeletingIds(prev => {
@@ -259,23 +297,35 @@ export default function ImageUploader({
                   }
                 }}
               />
-              <Button
-                type="button"
-                variant="destructive"
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeImage(index);
-                }}
-                disabled={deletingIds.has(fileIds[index])}
-                className={`absolute top-2 right-2 h-8 w-8 p-0 ${deletingIds.has(fileIds[index]) ? 'opacity-50' : ''}`}
-              >
-                {deletingIds.has(fileIds[index]) ? (
+              {uploadProgress[index] !== undefined ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="absolute top-2 right-2 h-8 w-8 p-0 bg-background/80"
+                  disabled
+                >
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <X className="h-4 w-4" />
-                )}
-              </Button>
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeImage(index);
+                  }}
+                  disabled={deletingIds.has(fileIds[index])}
+                  className={`absolute top-2 right-2 h-8 w-8 p-0 ${deletingIds.has(fileIds[index]) ? 'opacity-50' : ''}`}
+                >
+                  {deletingIds.has(fileIds[index]) ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <X className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
             </div>
           )})}
         </div>
