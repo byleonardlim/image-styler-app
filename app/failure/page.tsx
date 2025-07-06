@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from "@/components/ui/button";
 
 export default function FailurePage() {
   const router = useRouter();
@@ -19,12 +20,12 @@ export default function FailurePage() {
       <div className="text-center">
         <h1 className="text-3xl font-bold mb-4">Payment Failed</h1>
         <p className="text-red-500 mb-6">{error}</p>
-        <button
+        <Button
           onClick={() => router.push('/')}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          variant="default"
         >
           Try Again
-        </button>
+        </Button>
       </div>
     </div>
   );

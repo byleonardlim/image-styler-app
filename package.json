@@ -26,6 +26,7 @@
     "openai": "4.98.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-dropzone": "^14.3.8",
     "react-markdown": "10.1.0",
     "redis": "^5.0.1",
     "stripe": "^18.2.0",

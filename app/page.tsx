@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Upload } from 'lucide-react';
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { X } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { useDropzone } from 'react-dropzone';
+import { Upload, Loader2, X, Image as ImageIcon } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 
 export default function Page() {
   const [style, setStyle] = useState('ghibli');
@@ -343,20 +344,23 @@ export default function Page() {
                           }
                         }}
                       />
-                      <button
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeImage(index);
                         }}
                         disabled={deletingIds.has(fileIds[index])}
-                        className={`absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-opacity ${deletingIds.has(fileIds[index]) ? 'opacity-50 cursor-wait' : ''}`}
+                        className={`absolute top-2 right-2 h-8 w-8 p-0 ${deletingIds.has(fileIds[index]) ? 'opacity-50' : ''}`}
                       >
                         {deletingIds.has(fileIds[index]) ? (
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <X className="h-4 w-4" />
                         )}
-                      </button>
+                      </Button>
                     </div>
                   )})}
                 </div>
