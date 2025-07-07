@@ -38,8 +38,9 @@ interface CheckoutSessionMetadata {
   imageData?: string;
   imageContentType?: string;
   productName?: string;
-  imageUrls?: string | string[];  // Can be string (JSON) or array
+  imageUrls?: string | string[];
   selectedStyle?: string;
+  fileIds?: string | string[];
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -343,24 +344,29 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
       return;
     }
 
-    // Get image URLs from metadata
-    let imageUrls: string[] = [];
-    if (metadata.imageUrls) {
+    // Get file IDs from metadata
+    let fileIds: string[] = [];
+    if (metadata.fileIds) {
       try {
         // Handle both string (JSON) and array formats
-        imageUrls = typeof metadata.imageUrls === 'string' 
-          ? JSON.parse(metadata.imageUrls) 
-          : metadata.imageUrls;
+        fileIds = typeof metadata.fileIds === 'string' 
+          ? JSON.parse(metadata.fileIds) 
+          : metadata.fileIds;
         
         // Ensure it's an array
-        if (!Array.isArray(imageUrls)) {
-          imageUrls = [];
+        if (!Array.isArray(fileIds)) {
+          fileIds = [];
         }
       } catch (error) {
-        console.error('Error parsing image URLs:', error);
-        imageUrls = [];
+        console.error('Error parsing file IDs:', error);
+        fileIds = [];
       }
     }
+    
+    // Generate Appwrite URLs from file IDs
+    const imageUrls = fileIds.map(fileId => 
+      `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${fileId}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`
+    );
     
     // Create the job with the session and image data
     await createJob(session, imageUrls);

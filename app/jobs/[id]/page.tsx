@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Check, Download } from "lucide-react";
 
-// Polling interval in milliseconds (5 minutes)
-const POLL_INTERVAL = 5 * 60 * 1000;
-// Maximum number of polling attempts (5 minutes * 12 = 1 hour total)
-const MAX_ATTEMPTS = 12;
+// Polling interval in milliseconds (1 minute)
+const POLL_INTERVAL = 60 * 1000;
+// Maximum number of polling attempts (1 minute * 30 = 30 minutes total)
+const MAX_ATTEMPTS = 30;
 
 type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 

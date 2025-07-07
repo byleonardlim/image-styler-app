@@ -57,9 +57,14 @@ export default function Page() {
     setIsLoading(true);
 
     try {
+      // Generate Appwrite URLs from fileIds
+      const appwriteUrls = fileIds.map(fileId => 
+        `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${fileId}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`
+      );
+
       // Store the checkout data in localStorage
       localStorage.setItem('checkoutData', JSON.stringify({
-        images: imagePreviews,
+        images: appwriteUrls, // Store Appwrite URLs instead of blob URLs
         style: style as string, // Safe to cast here since we've validated the style exists
         fileIds
       }));
@@ -80,7 +85,8 @@ export default function Page() {
             },
           },
           style: style,
-          imageUrls: imagePreviews // Use the preview URLs for checkout
+          imageUrls: appwriteUrls, // Use Appwrite URLs instead of blob URLs
+          fileIds: fileIds // Also pass fileIds for reference
         }),
       });
 

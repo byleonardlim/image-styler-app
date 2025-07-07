@@ -15,13 +15,14 @@ interface CreateSessionRequest {
     };
   };
   style: string;
-  imageUrls: string[];
+  imageUrls: string[]; // Appwrite URLs
+  fileIds: string[];   // Appwrite file IDs
   customerEmail?: string;
 }
 
 export async function POST(req: Request) {
   try {
-    const { price_data, style, imageUrls, customerEmail } = await req.json() as CreateSessionRequest;
+    const { price_data, style, imageUrls, customerEmail, fileIds = [] } = await req.json() as CreateSessionRequest;
 
     if (!style || !imageUrls || imageUrls.length === 0) {
       return NextResponse.json(
@@ -61,6 +62,7 @@ export async function POST(req: Request) {
         productName: price_data.product_data.name,
         selectedStyle: style,
         imageUrls: JSON.stringify(imageUrls),
+        fileIds: JSON.stringify(fileIds), // Store file IDs in metadata
         customerEmail: customerEmail || ''
       },
       customer_email: customerEmail,

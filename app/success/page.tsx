@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useJobBySession } from '@/hooks/useJob';
 import { Button } from "@/components/ui/button";
 import { AlertCircle } from "lucide-react";
@@ -9,14 +9,54 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function JobRedirector({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const job = useJobBySession(sessionId);
+  const [retryCount, setRetryCount] = useState(0);
   
-  if (job?.id) {
-    router.push(`/jobs/${job.id}`);
-    return null;
-  }
+  useEffect(() => {
+    if (!sessionId) return;
+    
+    const checkJob = async () => {
+      try {
+        const response = await fetch(`/api/jobs?sessionId=${encodeURIComponent(sessionId)}`, {
+          cache: 'no-store',
+        });
+        
+        if (response.ok) {
+          const job = await response.json();
+          if (job?.id) {
+            router.push(`/jobs/${job.id}`);
+            return;
+          }
+        }
+        
+        // If we get here, the job wasn't found
+        if (retryCount < 3) {
+          // Retry after a delay
+          console.log(`Job not found, retrying... (${retryCount + 1}/3)`);
+          setTimeout(() => setRetryCount(c => c + 1), 2000);
+        } else {
+          throw new Error('We couldn\'t find your job. Please try again later or contact support.');
+        }
+      } catch (error) {
+        console.error('Error fetching job:', error);
+        if (retryCount < 3) {
+          // Retry after a delay on error
+          setTimeout(() => setRetryCount(c => c + 1), 2000);
+        } else {
+          throw error;
+        }
+      }
+    };
+    
+    const timer = setTimeout(checkJob, 1000);
+    return () => clearTimeout(timer);
+  }, [sessionId, retryCount, router]);
   
-  throw new Error('Job not found');
+  return (
+    <div className="text-center p-8">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+      <p className="text-gray-600">Preparing your job... {retryCount > 0 && `(Retry ${retryCount}/3)`}</p>
+    </div>
+  );
 }
 
 function LoadingView() {

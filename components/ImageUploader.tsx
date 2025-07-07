@@ -1,21 +1,130 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useReducer } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, Loader2, X } from 'lucide-react';
-import { Label } from "@/components/ui/label";
+import { Upload, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-
-interface ImageUploaderProps {
-  onImagesChange: (images: File[], previews: string[], fileIds: string[]) => void;
-  onError: (error: string | null) => void;
-  isLoading: boolean;
-  setIsLoading: (isLoading: boolean) => void;
-  style?: string | null;
-  totalPrice: number;
-}
-
 import { useToast } from '@/components/ui/toast';
+import { ImageState, ImageUploaderProps, ImageAction } from '@/types/image';
+import { uploadImage, deleteImage } from '@/lib/api/imageService';
+import { ImagePreview } from './ImagePreview';
+
+const MAX_IMAGES = 10;
+const ACCEPTED_FILE_TYPES = {
+  'image/jpeg': ['.jpeg', '.jpg'],
+  'image/png': ['.png'],
+  'image/webp': ['.webp']
+} as const;
+
+const initialState: ImageState = {
+  files: [],
+  previews: [],
+  fileIds: [],
+  urlMapping: {},
+  uploadProgress: {},
+  deletingIds: new Set(),
+};
+
+function imageReducer(state: ImageState, action: ImageAction): ImageState {
+  switch (action.type) {
+    case 'ADD_IMAGES':
+      return {
+        ...state,
+        files: [...state.files, ...action.payload.files],
+        previews: [...state.previews, ...action.payload.previews],
+      };
+
+    case 'UPLOAD_START':
+      return {
+        ...state,
+        uploadProgress: {
+          ...state.uploadProgress,
+          [action.payload.index]: action.payload.inProgress !== undefined 
+            ? action.payload.inProgress 
+            : true,
+        },
+      };
+
+    case 'UPLOAD_SUCCESS':
+      return {
+        ...state,
+        fileIds: [...state.fileIds, action.payload.fileId],
+        urlMapping: {
+          ...state.urlMapping,
+          [action.payload.fileId]: action.payload.fileUrl, // Store the Appwrite URL from the response
+        },
+        // Clean up the blob URL since we have the Appwrite URL now
+        previews: state.previews.map((preview, idx) => 
+          idx === action.payload.index ? action.payload.fileUrl : preview
+        ),
+        uploadProgress: Object.entries(state.uploadProgress).reduce(
+          (acc, [key, value]) => {
+            if (parseInt(key) !== action.payload.index) {
+              acc[parseInt(key)] = value;
+            }
+            return acc;
+          },
+          {} as Record<number, boolean>
+        ),
+      };
+
+    case 'UPLOAD_ERROR':
+      // Remove the failed upload from state
+      const newFiles = [...state.files];
+      const newPreviews = [...state.previews];
+      newFiles.splice(action.payload.index, 1);
+      newPreviews.splice(action.payload.index, 1);
+
+      return {
+        ...state,
+        files: newFiles,
+        previews: newPreviews,
+        uploadProgress: Object.entries(state.uploadProgress).reduce(
+          (acc, [key, value]) => {
+            if (parseInt(key) !== action.payload.index) {
+              acc[parseInt(key)] = value;
+            }
+            return acc;
+          },
+          {} as Record<number, boolean>
+        ),
+      };
+
+    case 'REMOVE_IMAGE':
+      const updatedFiles = [...state.files];
+      const updatedPreviews = [...state.previews];
+      const updatedFileIds = [...state.fileIds];
+      const removedFileId = updatedFileIds[action.payload.index];
+      
+      updatedFiles.splice(action.payload.index, 1);
+      updatedPreviews.splice(action.payload.index, 1);
+      updatedFileIds.splice(action.payload.index, 1);
+
+      const updatedMapping = { ...state.urlMapping };
+      if (removedFileId) {
+        delete updatedMapping[removedFileId];
+      }
+
+      return {
+        ...state,
+        files: updatedFiles,
+        previews: updatedPreviews,
+        fileIds: updatedFileIds,
+        urlMapping: updatedMapping,
+        deletingIds: new Set([...state.deletingIds].filter(id => id !== removedFileId)),
+      };
+
+    case 'CLEANUP':
+      return {
+        ...state,
+        uploadProgress: {},
+        deletingIds: new Set(),
+      };
+
+    default:
+      return state;
+  }
+}
 
 export default function ImageUploader({ 
   onImagesChange, 
@@ -26,314 +135,265 @@ export default function ImageUploader({
   totalPrice 
 }: ImageUploaderProps) {
   const { showToast } = useToast();
-  const [images, setImages] = useState<File[]>([]);
-  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-  const [fileIds, setFileIds] = useState<string[]>([]);
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-  const [uploadProgress, setUploadProgress] = useState<Record<number, boolean>>({});
-  const [urlMapping, setUrlMapping] = useState<Record<string, string>>({});
-  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
+  const [state, dispatch] = useReducer(imageReducer, initialState);
+
+  // Clean up blob URLs when they're no longer needed
+  useEffect(() => {
+    // Clean up function that will run when the component unmounts
+    // or when the previews change
+    const cleanup = () => {
+      // Get current previews that are blob URLs
+      const blobUrls = state.previews.filter(url => url.startsWith('blob:'));
+      
+      // Revoke each blob URL
+      blobUrls.forEach(url => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (error) {
+          console.warn('Failed to revoke blob URL:', error);
+        }
+      });
+    };
+
+    return cleanup;
+  }, [state.previews]);
+
+  // Notify parent component of changes
+  useEffect(() => {
+    onImagesChange(
+      state.files,
+      state.previews,
+      state.fileIds
+    );
+  }, [state.files, state.previews, state.fileIds, onImagesChange]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const validImages = acceptedFiles.filter(file => 
-      ['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+      Object.keys(ACCEPTED_FILE_TYPES).includes(file.type)
     );
 
-    if (images.length + validImages.length > 10) {
-      showToast('Maximum 10 images allowed', { type: 'destructive' });
+    if (state.files.length + validImages.length > MAX_IMAGES) {
+      showToast(`Maximum ${MAX_IMAGES} images allowed`, { type: 'destructive' });
       return;
     }
 
-    if (validImages.length > 0) {
-      handleNewImages(validImages);
+    if (validImages.length === 0) {
+      showToast('Please upload valid image files (JPEG, PNG, WebP)', { type: 'destructive' });
+      return;
     }
-  }, [images.length, onError]);
+
+    handleNewImages(validImages);
+  }, [state.files.length, showToast]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'image/jpeg': ['.jpeg', '.jpg'],
-      'image/png': ['.png'],
-      'image/webp': ['.webp']
+    accept: ACCEPTED_FILE_TYPES,
+    maxFiles: MAX_IMAGES,
+    multiple: true,
+    maxSize: 5 * 1024 * 1024, // 5MB
+    onDropRejected: () => {
+      showToast('Some files were rejected. Only images up to 5MB are allowed.', { type: 'destructive' });
     },
-    maxFiles: 10,
-    multiple: true
   });
 
   const handleNewImages = async (newImages: File[]) => {
+    setIsLoading(true);
+    onError(null);
+
     try {
-      setIsLoading(true);
-      onError(null);
-
-      // Create preview URLs immediately
-      const previews = newImages.map(file => URL.createObjectURL(file));
+      // Create preview URLs immediately for better UX
+      const newPreviews = newImages.map(file => URL.createObjectURL(file));
       
-      // Update state with previews first for immediate UI update
-      setImages(prev => [...prev, ...newImages]);
-      setImagePreviews(prev => [...prev, ...previews]);
+      // Add new images to state
+      dispatch({
+        type: 'ADD_IMAGES',
+        payload: {
+          files: newImages,
+          previews: newPreviews,
+        },
+      });
 
-      // Upload each file to Appwrite
+      // Upload each file in parallel
       const uploadPromises = newImages.map(async (file, index) => {
+        const fileIndex = state.files.length + index;
+        
         try {
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          const xhr = new XMLHttpRequest();
-          
-          // Create a promise that resolves when upload is complete
-          const uploadPromise = new Promise((resolve, reject) => {
-            xhr.upload.onprogress = (event) => {
-              if (event.lengthComputable) {
-                // Set upload in progress
-                setUploadProgress(prev => ({
-                  ...prev,
-                  [images.length + index]: true
-                }));
-              }
-            };
-
-            xhr.onload = () => {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                resolve(JSON.parse(xhr.responseText));
-              } else {
-                reject(new Error(xhr.statusText));
-              }
-            };
-
-            xhr.onerror = () => {
-              reject(new Error('Network error'));
-            };
+          // Update upload progress
+          dispatch({
+            type: 'UPLOAD_START',
+            payload: { index: fileIndex },
           });
-          
-          // Start the upload
-          xhr.open('POST', '/api/upload', true);
-          xhr.setRequestHeader('Accept', 'application/json');
-          xhr.send(formData);
-          
-          const result = await uploadPromise as {
-            fileId: string;
-            fileUrl?: string;
-            [key: string]: any;
-          };
-          
-          // Ensure the file URL is properly formatted
-          const fileUrl = result.fileUrl || 
-            `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${result.fileId}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
-          
-          // Clear the progress when done
-          setUploadProgress(prev => {
-            const newProgress = {...prev};
-            delete newProgress[images.length + index];
-            return newProgress;
+
+          // Upload the file
+          const { fileId, fileUrl } = await uploadImage(
+            file,
+            (inProgress) => {
+              dispatch({
+                type: 'UPLOAD_START',
+                payload: { index: fileIndex, inProgress },
+              });
+            }
+          );
+
+          // Update state with successful upload
+          dispatch({
+            type: 'UPLOAD_SUCCESS',
+            payload: {
+              index: fileIndex,
+              fileId,
+              fileUrl,
+            },
           });
-          
-          return {
-            success: true,
-            fileId: result.fileId,
-            fileUrl,
-            index: images.length + index
-          };
+
+          return { success: true, fileId, fileUrl };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Upload failed';
           showToast(`Failed to upload ${file.name}: ${errorMessage}`, { type: 'destructive' });
-          return {
-            success: false,
-            error: errorMessage,
-            index: images.length + index
-          };
+          
+          dispatch({
+            type: 'UPLOAD_ERROR',
+            payload: { index: fileIndex, error: errorMessage },
+          });
+          
+          return { success: false, error: errorMessage };
         }
       });
 
-      const results = await Promise.all(uploadPromises);
-      
-      // Process results
-      const newFileIds: string[] = [];
-      const newUploadedImageUrls: string[] = [];
-      const newUrlMapping: Record<string, string> = {};
-      
-      results.forEach((result) => {
-        if (result.success && result.fileId && result.fileUrl) {
-          newFileIds.push(result.fileId);
-          newUploadedImageUrls.push(result.fileUrl);
-          newUrlMapping[result.fileId] = result.fileUrl;
-        } else if (!result.success) {
-          // Remove failed uploads from previews
-          const index = result.index ?? -1;
-          if (index >= 0) {
-            setImagePreviews(prev => prev.filter((_, idx) => idx !== index));
-            setImages(prev => prev.filter((_, idx) => idx !== index));
-          }
-          showToast(`Failed to upload some images: ${result.error || 'Unknown error'}`, { type: 'destructive' });
-        }
-      });
-
-      const updatedFileIds = [...fileIds, ...newFileIds];
-      const updatedImages = [...images, ...newImages];
-      const updatedPreviews = [...imagePreviews, ...previews];
-      
-      setFileIds(updatedFileIds);
-      setUploadedImageUrls(prev => [...prev, ...newUploadedImageUrls]);
-      setUrlMapping(prev => ({ ...prev, ...newUrlMapping }));
-      
-      // Notify parent component of the changes
-      onImagesChange(updatedImages, updatedPreviews, updatedFileIds);
-
+      // Wait for all uploads to complete
+      await Promise.all(uploadPromises);
     } catch (error) {
       console.error('Error handling image uploads:', error);
-      showToast('An error occurred while processing your images', { type: 'destructive' });
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while processing your images';
+      showToast(errorMessage, { type: 'destructive' });
+      onError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   const removeImage = async (index: number) => {
-    const fileIdToDelete = fileIds[index];
-    const previewToDelete = imagePreviews[index];
+    const fileIdToDelete = state.fileIds[index];
+    const previewToDelete = state.previews[index];
     
-    if (!fileIdToDelete || !previewToDelete) return;
+    if (!fileIdToDelete) return;
 
     try {
-      // Add to deleting set
-      setDeletingIds(prev => new Set(prev).add(fileIdToDelete));
+      // Mark as deleting
+      dispatch({
+        type: 'REMOVE_IMAGE',
+        payload: { index },
+      });
       
       // Delete the file from storage
-      const response = await fetch('/api/delete', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ fileId: fileIdToDelete }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete file from storage');
-      }
-
+      await deleteImage(fileIdToDelete);
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete image';
+      showToast(errorMessage, { type: 'destructive' });
+      
+      // Revert the removal if deletion fails
+      // The actual file will still be in the storage, but we'll keep the UI in sync
+      // by not removing it from the state
+    } finally {
       // Clean up blob URL if it exists
-      if (previewToDelete.startsWith('blob:')) {
+      if (previewToDelete && previewToDelete.startsWith('blob:')) {
         URL.revokeObjectURL(previewToDelete);
       }
-
-      // Update local state
-      const newImages = [...images];
-      const newPreviews = [...imagePreviews];
-      const newFileIds = [...fileIds];
-      
-      newImages.splice(index, 1);
-      newPreviews.splice(index, 1);
-      newFileIds.splice(index, 1);
-
-      setImages(newImages);
-      setImagePreviews(newPreviews);
-      setFileIds(newFileIds);
-      
-      // Clean up URL mapping
-      setUrlMapping(prev => {
-        const newMapping = { ...prev };
-        delete newMapping[previewToDelete];
-        return newMapping;
-      });
-
-      // Notify parent component of the changes
-      onImagesChange(newImages, newPreviews, newFileIds);
-      
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to delete image', { type: 'destructive' });
-    } finally {
-      // Remove from deleting set
-      setDeletingIds(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(fileIdToDelete);
-        return newSet;
-      });
     }
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <div 
         {...getRootProps()} 
         className={`flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
           isDragActive 
-            ? 'border-blue-500 bg-blue-50' 
-            : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
+            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+            : 'border-gray-300 bg-gray-50 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800/50 dark:hover:bg-gray-800/70'
         }`}
+        aria-label="Upload images"
       >
-        <input {...getInputProps()} id="dropzone-file" />
-        <div className="flex flex-col items-center justify-center pt-5 pb-6 px-4 text-center">
-          {isDragActive ? (
-            <>
-              <Upload className={`w-8 h-8 mb-4 text-blue-500`} />
-              <p className="text-blue-600 font-medium">Drop the images here...</p>
-            </>
+        <input 
+          {...getInputProps()} 
+          id="dropzone-file" 
+          aria-label="File upload"
+          disabled={isLoading}
+        />
+        <div className="flex flex-col items-center justify-center p-6 text-center">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center space-y-2">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+              <p className="text-sm text-gray-600 dark:text-gray-400">Processing images...</p>
+            </div>
+          ) : isDragActive ? (
+            <div className="flex flex-col items-center space-y-2">
+              <Upload className="h-10 w-10 text-blue-500" />
+              <p className="text-blue-600 dark:text-blue-400 font-medium">Drop the images here</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">We'll handle the rest</p>
+            </div>
           ) : (
-            <>
-              <Upload className={`w-8 h-8 mb-4 text-gray-500`} />
-              <p className="mb-2 text-sm text-gray-600">
-                <span className="font-semibold">Click to upload</span> or drag and drop
+            <div className="flex flex-col items-center space-y-2">
+              <Upload className="h-10 w-10 text-gray-400" />
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                <span className="font-semibold text-blue-600 dark:text-blue-400">Click to upload</span> or drag and drop
               </p>
-              <p className="text-xs text-gray-500">
-                PNG, JPG, WEBP (MAX. 10 images, 5MB each)
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                PNG, JPG, WEBP (MAX. {MAX_IMAGES} images, 5MB each)
               </p>
-            </>
+            </div>
           )}
         </div>
       </div>
-      {imagePreviews.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
-          {imagePreviews.map((preview, index) => {
-            // Use the server URL if available, otherwise use the blob URL
-            const imageUrl = urlMapping[preview] || preview;
-            return (
-            <div key={preview} className="relative">
-              <img
-                src={imageUrl}
-                alt={`Preview ${index + 1}`}
-                className="max-h-32 w-full rounded-lg object-cover"
-                onLoad={() => {
-                  // Clean up blob URL if we have a server URL
-                  if (urlMapping[preview] && preview.startsWith('blob:')) {
-                    URL.revokeObjectURL(preview);
-                  }
-                }}
-              />
-              {uploadProgress[index] !== undefined ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="absolute top-2 right-2 h-8 w-8 p-0 bg-background/80"
-                  disabled
-                >
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeImage(index);
-                  }}
-                  disabled={deletingIds.has(fileIds[index])}
-                  className={`absolute top-2 right-2 h-8 w-8 p-0 ${deletingIds.has(fileIds[index]) ? 'opacity-50' : ''}`}
-                >
-                  {deletingIds.has(fileIds[index]) ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <X className="h-4 w-4" />
+
+      {state.previews.length > 0 && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {state.previews.map((preview, index) => {
+              const fileId = state.fileIds[index];
+              const isUploading = state.uploadProgress[index] !== undefined;
+              const isDeleting = fileId ? state.deletingIds.has(fileId) : false;
+              const imageUrl = fileId ? state.urlMapping[fileId] || preview : preview;
+              
+              return (
+                <div key={`${preview}-${index}`} className="relative group">
+                  <ImagePreview 
+                    src={imageUrl}
+                    onRemove={() => removeImage(index)}
+                    isUploading={isUploading}
+                    isDeleting={isDeleting}
+                  />
+                  {isUploading && (
+                    <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-white" />
+                    </div>
                   )}
-                </Button>
-              )}
-            </div>
-          )})}
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+            <span>
+              {state.previews.length} of {MAX_IMAGES} images selected
+            </span>
+            <span>
+              {state.previews.length <= 5 
+                ? `$${state.previews.length * 4}.00`
+                : `$${5 * 4 + (state.previews.length - 5) * 3}.00`}
+            </span>
+          </div>
         </div>
       )}
-      <div className="mt-4">
-        <p className="text-xs text-muted-foreground">
-          First 5 photos: $4 each • Additional photos: $3 each
-        </p>
+
+      <div className="text-xs text-muted-foreground text-center">
+        <p>First 5 photos: $4 each • Additional photos: $3 each</p>
+        {state.previews.length > 0 && (
+          <p className="mt-1 text-green-600 dark:text-green-400">
+            {state.previews.length <= 5 
+              ? `Total: $${state.previews.length * 4}.00`
+              : `Total: $${5 * 4 + (state.previews.length - 5) * 3}.00 (${state.previews.length - 5} extra photos)`}
+          </p>
+        )}
       </div>
     </div>
   );
