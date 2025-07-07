@@ -150,7 +150,7 @@ export default function ImageUploader({
         try {
           URL.revokeObjectURL(url);
         } catch (error) {
-          console.warn('Failed to revoke blob URL:', error);
+          console.error('Failed to revoke blob URL:', error);
         }
       });
     };

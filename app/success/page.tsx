@@ -30,15 +30,22 @@ function JobRedirector({ sessionId }: { sessionId: string }) {
         
         // If we get here, the job wasn't found
         if (retryCount < 3) {
-          // Retry after a delay
-          console.log(`Job not found, retrying... (${retryCount + 1}/3)`);
-          setTimeout(() => setRetryCount(c => c + 1), 2000);
+          if (retryCount < 2) {
+            setTimeout(() => setRetryCount(c => c + 1), 2000);
+          } else {
+            throw new Error('We couldn\'t find your job. Please try again later or contact support.');
+          }
         } else {
           throw new Error('We couldn\'t find your job. Please try again later or contact support.');
         }
       } catch (error) {
         console.error('Error fetching job:', error);
         if (retryCount < 3) {
+          if (retryCount < 2) {
+            setTimeout(() => setRetryCount(c => c + 1), 2000);
+          } else {
+            throw error;
+          }
           // Retry after a delay on error
           setTimeout(() => setRetryCount(c => c + 1), 2000);
         } else {

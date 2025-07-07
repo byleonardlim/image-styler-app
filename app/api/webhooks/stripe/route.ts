@@ -9,6 +9,39 @@ import { nanoid } from 'nanoid';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const VALID_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
+// Logging helper
+const log = {
+  info: (message: string, data: Record<string, any> = {}) => {
+    console.log(JSON.stringify({
+      level: 'INFO',
+      timestamp: new Date().toISOString(),
+      message,
+      ...data
+    }));
+  },
+  warn: (message: string, data: Record<string, any> = {}) => {
+    console.warn(JSON.stringify({
+      level: 'WARN',
+      timestamp: new Date().toISOString(),
+      message,
+      ...data
+    }));
+  },
+  error: (message: string, error: unknown, data: Record<string, any> = {}) => {
+    const errorData = error instanceof Error 
+      ? { error: error.message, stack: error.stack }
+      : { error: String(error) };
+    
+    console.error(JSON.stringify({
+      level: 'ERROR',
+      timestamp: new Date().toISOString(),
+      message,
+      ...errorData,
+      ...data
+    }));
+  }
+};
+
 // Types
 interface ImageUploadResult {
   fileId: string;
@@ -139,9 +172,12 @@ const createJob = async function createJob(
       updated_at: new Date(),
     };
 
-    console.log('Creating job with data:', JSON.stringify(jobData, null, 2));
-    console.log('Database ID:', process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID);
-    console.log('Collection ID:', process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID);
+    log.info('Creating job', {
+      jobId: jobId,
+      customerEmail: jobData.customer_email,
+      paymentStatus: jobData.payment_status,
+      imageCount: jobData.image_urls?.length || 0
+    });
 
     // Create document in Appwrite
     const result = await databases.createDocument(
@@ -151,7 +187,7 @@ const createJob = async function createJob(
       jobData
     );
 
-    console.log('Document created successfully:', result.$id);
+    log.info('Job created successfully', { jobId: result.$id });
     return result;
   } catch (error: unknown) {
     const errorData = error as {
@@ -162,12 +198,10 @@ const createJob = async function createJob(
       stack?: string;
     };
     
-    console.error('Error in createJob:', {
-      message: errorData.message || 'Unknown error',
+    log.error('Failed to create job', error, {
       code: errorData.code,
       type: errorData.type,
-      response: errorData.response ? JSON.stringify(errorData.response) : undefined,
-      stack: errorData.stack
+      hasResponse: !!errorData.response
     });
     
     throw new Error(`Failed to create job: ${errorData.message}`);
@@ -199,7 +233,7 @@ const findJobBySessionId = async (sessionId: string): Promise<JobData | null> =>
     
     return result.documents.length > 0 ? result.documents[0] as unknown as JobData : null;
   } catch (error) {
-    console.error('Error finding job by session ID:', error);
+    log.error('Error finding job by session ID', error);
     return null;
   }
 };
@@ -207,11 +241,11 @@ const findJobBySessionId = async (sessionId: string): Promise<JobData | null> =>
 // Webhook event handlers
 async function handlePaymentIntentSucceeded(event: Stripe.Event) {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  console.log('PaymentIntent was successful!', {
+  log.info('PaymentIntent succeeded', {
     paymentIntentId: paymentIntent.id,
     amount: paymentIntent.amount,
     currency: paymentIntent.currency,
-    metadata: paymentIntent.metadata
+    hasMetadata: !!paymentIntent.metadata
   });
   
   // If this payment intent is associated with a checkout session, we'll handle it there
@@ -245,8 +279,7 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
           } as Stripe.Event);
           console.log('Successfully processed checkout session:', sessionId);
         } catch (error) {
-          console.error('Error in handleCheckoutSessionCompleted:', {
-            error,
+          log.error('Error in handleCheckoutSessionCompleted', error, {
             sessionId,
             paymentIntentId: paymentIntent.id
           });
@@ -255,17 +288,19 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
       }
     } catch (error) {
       if (error instanceof Error) {
-        console.error('Error retrieving checkout session:', {
-          error: error.message,
+        log.error('Error retrieving checkout session', error, {
           sessionId,
-          paymentIntentId: paymentIntent.id,
-          stack: error.stack
+          paymentIntentId: paymentIntent.id
         });
         
         if ('type' in error && 'code' in error && 
             error.type === 'StripeInvalidRequestError' && 
             error.code === 'resource_missing') {
-          console.warn('Checkout session not found, but payment was successful. This might indicate a stale webhook event.');
+          log.warn('Checkout session not found for successful payment', {
+            sessionId,
+            paymentIntentId: paymentIntent.id,
+            message: 'This might indicate a stale webhook event.'
+          });
           // Consider creating a support ticket or logging to an error tracking service
           return { success: true, warning: 'Checkout session not found' };
         }
@@ -273,7 +308,7 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
       throw error; // Re-throw the error if it's not a missing session
     }
   } else {
-    console.log('No session_id found in payment intent metadata');
+    log.info('No session_id found in payment intent metadata');
   }
   
   return { success: true };
@@ -281,25 +316,36 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
 
 async function handlePaymentIntentFailed(event: Stripe.Event) {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  console.error('PaymentIntent failed:', paymentIntent.id, paymentIntent.last_payment_error);
+  log.error('PaymentIntent failed', new Error('Payment failed'), {
+    paymentIntentId: paymentIntent.id,
+    errorCode: paymentIntent.last_payment_error?.code,
+    errorType: paymentIntent.last_payment_error?.type
+  });
   return { success: false, error: paymentIntent.last_payment_error };
 }
 
 async function handlePaymentIntentCreated(event: Stripe.Event) {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  console.log('PaymentIntent was created:', paymentIntent.id);
+  log.info('PaymentIntent created', { paymentIntentId: paymentIntent.id });
   return { success: true };
 }
 
 async function handleChargeSucceeded(event: Stripe.Event) {
   const charge = event.data.object as Stripe.Charge;
-  console.log('Charge succeeded:', charge.id, 'Amount:', charge.amount, charge.currency);
+  log.info('Charge succeeded', {
+    chargeId: charge.id,
+    amount: charge.amount,
+    currency: charge.currency
+  });
   return { success: true };
 }
 
 async function handleChargeUpdated(event: Stripe.Event) {
   const charge = event.data.object as Stripe.Charge;
-  console.log('Charge was updated:', charge.id, 'Status:', charge.status);
+  log.info('Charge updated', {
+    chargeId: charge.id,
+    status: charge.status
+  });
   return { success: true };
 }
 
@@ -330,7 +376,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
     // Check if job already exists for this session
     const existingJob = await findJobBySessionId(session.id);
     if (existingJob) {
-      console.log('Job already exists for session:', session.id);
+      log.info('Job already exists for session', { sessionId: session.id });
       return;
     }
 
@@ -340,7 +386,10 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
     );
 
     if (paymentIntent.status !== 'succeeded') {
-      console.log('Payment not successful, skipping job creation');
+      log.info('Payment not successful, skipping job creation', {
+        sessionId: session.id,
+        paymentStatus: paymentIntent.status
+      });
       return;
     }
 
@@ -358,7 +407,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
           fileIds = [];
         }
       } catch (error) {
-        console.error('Error parsing file IDs:', error);
+        log.error('Error parsing file IDs', error);
         fileIds = [];
       }
     }
@@ -371,9 +420,12 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
     // Create the job with the session and image data
     await createJob(session, imageUrls);
     
-    console.log('Successfully created job for session:', session.id, 'with', imageUrls.length, 'images');
+    log.info('Successfully created job', {
+      sessionId: session.id,
+      imageCount: imageUrls.length
+    });
   } catch (error) {
-    console.error('Error in handleCheckoutSessionCompleted:', error);
+    log.error('Error in handleCheckoutSessionCompleted', error);
     throw error;
   }
 }
@@ -404,7 +456,7 @@ export const POST = async (req: Request) => {
     // Get webhook secret from environment
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
-      console.error('STRIPE_WEBHOOK_SECRET is not set');
+      log.error('STRIPE_WEBHOOK_SECRET is not set', new Error('Configuration error'));
       return NextResponse.json(
         { error: 'Webhook secret not configured' },
         { status: 500 }
@@ -414,7 +466,7 @@ export const POST = async (req: Request) => {
     // Parse the request body as raw text
     const sig = req.headers.get('stripe-signature');
     if (!sig) {
-      console.error('No Stripe signature found in request headers');
+      log.error('No Stripe signature found in request headers', new Error('Invalid request'));
       return NextResponse.json(
         { error: 'No Stripe signature' },
         { status: 400 }
@@ -423,7 +475,7 @@ export const POST = async (req: Request) => {
     
     const body = await req.text();
     if (!body) {
-      console.error('Empty request body');
+      log.error('Empty request body', new Error('Invalid request'));
       return NextResponse.json(
         { error: 'Empty request body' },
         { status: 400 }
@@ -433,15 +485,15 @@ export const POST = async (req: Request) => {
     // Verify the webhook signature
     let event;
     try {
-      console.log('Verifying webhook signature...');
       event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
-      console.log(`Received webhook event: ${event.type} (${event.id})`);
+      log.info('Received webhook event', {
+        eventType: event.type,
+        eventId: event.id
+      });
     } catch (err) {
       const error = err as Error;
-      console.error('Stripe webhook signature verification failed:', {
-        error: error.message,
-        stack: error.stack,
-        headers: Object.fromEntries(req.headers.entries())
+      log.error('Stripe webhook signature verification failed', error, {
+        headers: Object.keys(Object.fromEntries(req.headers.entries()))
       });
       return NextResponse.json(
         { 
@@ -454,45 +506,45 @@ export const POST = async (req: Request) => {
 
     // Handle the event
     try {
-      console.log(`Processing event type: ${event.type}`);
+      log.info('Processing event', { eventType: event.type });
       
       switch (event.type) {
         case 'checkout.session.completed':
-          console.log('Handling checkout.session.completed event');
+          log.info('Handling checkout.session.completed event');
           await handleCheckoutSessionCompleted(event);
           break;
 
         case 'payment_intent.succeeded':
-          console.log('Handling payment_intent.succeeded event');
+          log.info('Handling payment_intent.succeeded event');
           await handlePaymentIntentSucceeded(event);
           break;
 
         case 'payment_intent.payment_failed':
-          console.log('Handling payment_intent.payment_failed event');
+          log.info('Handling payment_intent.payment_failed event');
           await handlePaymentIntentFailed(event);
           break;
 
         case 'payment_intent.created':
-          console.log('Handling payment_intent.created event');
+          log.info('Handling payment_intent.created event');
           await handlePaymentIntentCreated(event);
           break;
 
         case 'charge.succeeded':
-          console.log('Handling charge.succeeded event');
+          log.info('Handling charge.succeeded event');
           await handleChargeSucceeded(event);
           break;
 
         case 'charge.updated':
-          console.log('Handling charge.updated event');
+          log.info('Handling charge.updated event');
           await handleChargeUpdated(event);
           break;
 
         default:
-          console.log(`Unhandled event type: ${event.type}`);
+          log.warn('Unhandled event type', { eventType: event.type });
           break;
       }
 
-      console.log(`Successfully processed event: ${event.type}`);
+      log.info('Successfully processed event', { eventType: event.type });
       return NextResponse.json({ 
         received: true,
         eventType: event.type,
@@ -502,10 +554,8 @@ export const POST = async (req: Request) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const errorStack = error instanceof Error ? error.stack : undefined;
       
-      console.error('Stripe webhook error:', {
-        message: errorMessage,
-        stack: errorStack,
-        timestamp: new Date().toISOString()
+      log.error('Stripe webhook error', error, {
+        eventType: event?.type
       });
       
       // Don't expose internal error details in production
@@ -527,11 +577,7 @@ export const POST = async (req: Request) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : undefined;
     
-    console.error('Unexpected error in webhook handler:', {
-      message: errorMessage,
-      stack: errorStack,
-      timestamp: new Date().toISOString()
-    });
+    log.error('Unexpected error in webhook handler', error);
     
     return NextResponse.json(
       { error: 'Internal server error' },

@@ -1,6 +1,6 @@
 'use client';
 
-import { use } from 'react';
+import { use, useCallback, useState, useEffect } from 'react';
 import { JobResponse } from '@/types/job';
 
 const getApiUrl = (path: string) => {
@@ -27,31 +27,64 @@ export function useJob(jobId: string) {
   return use(fetchJob(jobId));
 }
 
-const fetchJobBySessionId = async (sessionId: string): Promise<JobResponse> => {
-  try {
-    const url = getApiUrl(`/api/jobs?sessionId=${encodeURIComponent(sessionId)}`);
-    console.log('Fetching job with URL:', url);
-    const res = await fetch(url, {
-      cache: 'no-store', // Prevent caching
-    });
-    
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      console.error('Failed to find job:', {
-        status: res.status,
-        statusText: res.statusText,
-        errorData
-      });
-      throw new Error(errorData.error || 'Failed to find job');
-    }
-    
-    return res.json();
-  } catch (error) {
-    console.error('Error in fetchJobBySessionId:', error);
-    throw error;
-  }
-};
+
 
 export function useJobBySession(sessionId: string) {
-  return use(fetchJobBySessionId(sessionId));
+  const [job, setJob] = useState<JobResponse | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchJobBySessionId = useCallback(async (sessionId: string): Promise<JobResponse> => {
+    try {
+      const url = getApiUrl(`/api/jobs?sessionId=${encodeURIComponent(sessionId)}`);
+      const res = await fetch(url, {
+        cache: 'no-store', // Prevent caching
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Failed to find job:', {
+          status: res.status,
+          statusText: res.statusText,
+          errorData
+        });
+        throw new Error(errorData.error || 'Failed to find job');
+      }
+      
+      return res.json();
+    } catch (error) {
+      console.error('Error in fetchJobBySessionId:', error);
+      throw error;
+    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    
+    const fetchJob = async () => {
+      try {
+        const data = await fetchJobBySessionId(sessionId);
+        if (isMounted) {
+          setJob(data);
+          setError(null);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err : new Error('An error occurred'));
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchJob();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionId]);
+
+  return { job, error, isLoading };
 }

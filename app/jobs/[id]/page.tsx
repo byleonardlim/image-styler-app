@@ -50,6 +50,29 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [isImageReady, setIsImageReady] = useState(false);
+  
+  // Get generated image URLs from the API response
+  const generatedImageUrls = job?.imageUrls || job?.metadata?.image_urls || [];
+  const hasMultipleImages = generatedImageUrls.length > 1;
+  const allImagesReady = generatedImageUrls.length > 0 && isImageReady;
+  
+  // Check if the generated image is accessible
+  useEffect(() => {
+    const checkImage = async () => {
+      if (generatedImageUrls.length > 0) {
+        try {
+          await fetch(generatedImageUrls[0], { method: 'HEAD' });
+          setIsImageReady(true);
+        } catch (err) {
+          console.error('Error checking generated image:', err);
+          setIsImageReady(false);
+        }
+      }
+    };
+
+    checkImage();
+  }, [generatedImageUrls]);
 
   // Fetch job status
   const fetchJobStatus = async (): Promise<JobData | null> => {
@@ -199,26 +222,7 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
     );
   }
 
-  // Get generated image URLs from the API response
-  const generatedImageUrls = job.imageUrls || job.metadata?.image_urls || [];
-  const hasMultipleImages = generatedImageUrls.length > 1;
-  
-  console.log('Generated image URLs:', generatedImageUrls);
-  
-  // Log the first URL's content type if available
-  if (generatedImageUrls.length > 0) {
-    console.log('Checking first generated image URL:', generatedImageUrls[0]);
-    fetch(generatedImageUrls[0], { method: 'HEAD' })
-      .then(response => {
-        console.log('Generated image status:', response.status);
-        console.log('Content type:', response.headers.get('content-type'));
-      })
-      .catch(err => {
-        console.error('Error checking generated image:', err);
-      });
-  } else {
-    console.log('No generated images found in job data');
-  }
+
 
   return (
     <div className="min-h-screen py-12 px-4 bg-gray-50">
@@ -252,7 +256,15 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                 {hasMultipleImages ? 'Generated Images' : 'Generated Image'}
               </h2>
               <div className={`grid ${hasMultipleImages ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-4`}>
-                {generatedImageUrls.map((url: string, index: number) => (
+                {!isImageReady && generatedImageUrls.length > 0 && (
+                  <div className="col-span-full flex items-center justify-center p-8">
+                    <div className="animate-pulse text-gray-500">
+                      <div className="h-8 w-8 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin mx-auto mb-2"></div>
+                      <p>Preparing your images...</p>
+                    </div>
+                  </div>
+                )}
+                {allImagesReady && generatedImageUrls.map((url: string, index: number) => (
                 <div key={index} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                   <div className="relative aspect-square bg-gray-100">
                     <img 
