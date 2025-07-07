@@ -1,4 +1,4 @@
-import { Client, Account, Storage, Databases, ID } from 'node-appwrite';
+import { Client, Account, Storage, Databases, Functions, ID } from 'node-appwrite';
 
 const appwriteEndpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!;
 const appwriteProjectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!;
@@ -18,5 +18,6 @@ const client = new Client()
 export const account = new Account(client);
 export const storage = new Storage(client);
 export const databases = new Databases(client);
+export const functions = new Functions(client);
 
 export { ID };

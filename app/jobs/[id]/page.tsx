@@ -1,36 +1,10 @@
 "use client";
 
-import { useEffect, useState, use } from 'react';
+import { use } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
-import { AlertCircle, Check, Download } from "lucide-react";
-
-// Polling interval in milliseconds (1 minute)
-const POLL_INTERVAL = 60 * 1000;
-// Maximum number of polling attempts (1 minute * 30 = 30 minutes total)
-const MAX_ATTEMPTS = 30;
-
-type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
-
-interface JobData {
-  id: string;
-  status: JobStatus;
-  progress?: number;
-  resultUrl?: string | null;
-  imageUrls?: string[];
-  image_urls?: string[];
-  error?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
-  metadata?: {
-    style?: string;
-    imageCount?: number;
-    customerEmail?: string;
-    paymentStatus?: string;
-    image_urls?: string[];
-  };
-}
+import { AlertCircle, Check, Download, Loader2 } from "lucide-react";
+import { usePollJobStatus } from '@/hooks/usePollJobStatus';
 
 interface JobStatusPageProps {
   params: Promise<{ id: string }>;
@@ -38,135 +12,23 @@ interface JobStatusPageProps {
 
 export default function JobStatusPage({ params }: JobStatusPageProps) {
   const router = useRouter();
+  const { id: jobId } = use(params);
+  const { job, isLoading, error } = usePollJobStatus(jobId);
 
   const handleBackToHome = () => {
     router.push('/');
   };
 
-  // Use React.use() to unwrap the params promise
-  const { id: jobId } = use(params);
-  
-  const [job, setJob] = useState<JobData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  const [isImageReady, setIsImageReady] = useState(false);
-  
-  // Get generated image URLs from the API response
-  const generatedImageUrls = job?.imageUrls || job?.metadata?.image_urls || [];
+  const generatedImageUrls = job?.imageUrls || [];
   const hasMultipleImages = generatedImageUrls.length > 1;
-  const allImagesReady = generatedImageUrls.length > 0 && isImageReady;
-  
-  // Check if the generated image is accessible
-  useEffect(() => {
-    const checkImage = async () => {
-      if (generatedImageUrls.length > 0) {
-        try {
-          await fetch(generatedImageUrls[0], { method: 'HEAD' });
-          setIsImageReady(true);
-        } catch (err) {
-          console.error('Error checking generated image:', err);
-          setIsImageReady(false);
-        }
-      }
-    };
-
-    checkImage();
-  }, [generatedImageUrls]);
-
-  // Fetch job status
-  const fetchJobStatus = async (): Promise<JobData | null> => {
-    try {
-      const response = await fetch(`/api/v1/jobs/${jobId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch job status');
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching job status:', error);
-      return null;
-    }
-  };
-
-  // Poll for job updates
-  useEffect(() => {
-    if (!jobId) return;
-
-    const poll = async (isManualRefresh = false) => {
-      // Don't start a new poll if we're already loading (unless it's a manual refresh)
-      if (isLoading && !isManualRefresh) return;
-      
-      // If not a manual refresh, check max attempts
-      if (!isManualRefresh && attempt >= MAX_ATTEMPTS) {
-        setError('Job processing is taking longer than expected. We will notify you by email when it\'s ready.');
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      const jobData = await fetchJobStatus();
-      
-      if (!jobData) {
-        if (!isManualRefresh) {
-          // Only schedule next poll if not a manual refresh
-          setTimeout(() => setAttempt(prev => prev + 1), POLL_INTERVAL);
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      setJob(jobData);
-      
-      if (jobData.status === 'completed' && jobData.resultUrl) {
-        setIsLoading(false);
-        // Stop polling when job is completed
-        return;
-      } else if (jobData.status === 'failed') {
-        setError(jobData.error || 'Job processing failed');
-        setIsLoading(false);
-        // Stop polling on failure
-        return;
-      } else if (!isManualRefresh) {
-        // Only schedule next poll if not a manual refresh and job is still processing
-        setTimeout(() => setAttempt(prev => prev + 1), POLL_INTERVAL);
-      }
-      
-      setIsLoading(false);
-    };
-
-    const timer = setTimeout(poll, POLL_INTERVAL);
-    return () => clearTimeout(timer);
-  }, [jobId, attempt]);
-
-  // Initial load
-  useEffect(() => {
-    const loadInitialData = async () => {
-      const jobData = await fetchJobStatus();
-      if (jobData) {
-        setJob(jobData);
-        
-        // If job is already completed or failed, don't show loading
-        if (['completed', 'failed'].includes(jobData.status)) {
-          setIsLoading(false);
-          if (jobData.status === 'failed') {
-            setError(jobData.error || 'Job processing failed');
-          }
-        }
-      } else {
-        setError('Failed to load job details');
-        setIsLoading(false);
-      }
-    };
-
-    loadInitialData();
-  }, [jobId]);
+  const isJobCompleted = job?.status === 'completed';
 
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
           <div className="mb-6">
-            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto" />
           </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Processing Your Images</h1>
           <p className="text-gray-600 mb-4">Generating your styled images. This may take a few moments...</p>
@@ -194,6 +56,12 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Processing Error</h1>
           <p className="text-gray-600 mb-6">{error}</p>
           <div className="flex flex-col space-y-3">
+          <Button
+              onClick={() => window.location.reload()}
+              variant="default"
+            >
+              Try Again
+            </Button>
             <Button
               onClick={handleBackToHome}
               className="w-full"
@@ -206,14 +74,14 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
     );
   }
 
-  if (!job) {
+  if (!job || (job.status === 'completed' && generatedImageUrls.length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
-          <p className="text-gray-600">Job details not found.</p>
+          <p className="text-gray-600">Job details not found or no images were generated.</p>
           <Button
             onClick={handleBackToHome}
-            className="w-full"
+            className="w-full mt-4"
           >
             Back to Home
           </Button>
@@ -222,28 +90,38 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
     );
   }
 
-
-
   return (
     <div className="min-h-screen py-12 px-4 bg-gray-50">
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
         {/* Header */}
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center">
-            <div className="bg-green-100 p-3 rounded-full">
-              <Check className="h-8 w-8 text-green-600" />
+            <div className={`p-3 rounded-full ${isJobCompleted ? 'bg-green-100' : 'bg-blue-100'}`}>
+              {isJobCompleted ? (
+                <Check className="h-8 w-8 text-green-600" />
+              ) : (
+                <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+              )}
             </div>
             <div className="ml-4">
-              <h1 className="text-2xl font-bold text-gray-800">Processing Complete!</h1>
+              <h1 className="text-2xl font-bold text-gray-800">
+                {isJobCompleted ? 'Processing Complete!' : 'Processing Your Images'}
+              </h1>
               <p className="text-gray-600">
                 {job.metadata?.style && `Style: ${job.metadata.style} • `}
-                {hasMultipleImages ? `${generatedImageUrls.length} images generated` : 'Your image is ready'}
+                {isJobCompleted 
+                  ? hasMultipleImages 
+                    ? `${generatedImageUrls.length} images generated` 
+                    : 'Your image is ready'
+                  : 'Generating your styled images...'}
               </p>
             </div>
           </div>
           {job.completedAt && (
             <div className="mt-4 text-sm text-gray-500">
-              Completed on {new Date(job.completedAt).toLocaleString()}
+              {isJobCompleted 
+                ? `Completed on ${new Date(job.completedAt).toLocaleString()}`
+                : `Started on ${new Date(job.createdAt || Date.now()).toLocaleString()}`}
             </div>
           )}
         </div>
@@ -256,15 +134,7 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                 {hasMultipleImages ? 'Generated Images' : 'Generated Image'}
               </h2>
               <div className={`grid ${hasMultipleImages ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-4`}>
-                {!isImageReady && generatedImageUrls.length > 0 && (
-                  <div className="col-span-full flex items-center justify-center p-8">
-                    <div className="animate-pulse text-gray-500">
-                      <div className="h-8 w-8 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin mx-auto mb-2"></div>
-                      <p>Preparing your images...</p>
-                    </div>
-                  </div>
-                )}
-                {allImagesReady && generatedImageUrls.map((url: string, index: number) => (
+                {generatedImageUrls.map((url: string, index: number) => (
                 <div key={index} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                   <div className="relative aspect-square bg-gray-100">
                     <img 
@@ -272,13 +142,6 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                       alt={`Generated image ${index + 1}`} 
                       className="w-full h-full object-contain"
                       loading="lazy"
-                      onError={(e) => {
-                        // Hide the image if it fails to load
-                        const container = (e.target as HTMLElement).parentElement;
-                        if (container) {
-                          container.style.display = 'none';
-                        }
-                      }}
                     />
                   </div>
                   <div className="p-3 bg-gray-50">
@@ -298,12 +161,10 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                           document.body.appendChild(link);
                           link.click();
                           
-                          // Cleanup
                           window.URL.revokeObjectURL(blobUrl);
                           document.body.removeChild(link);
                         } catch (error) {
                           console.error('Error downloading image:', error);
-                          // Fallback to direct download if blob approach fails
                           const link = document.createElement('a');
                           link.href = url;
                           link.download = `styled-image-${index + 1}.jpg`;
@@ -326,6 +187,12 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
               {job.status === 'processing' && (
                 <p className="text-sm text-gray-400 mt-2">Your images are being generated. Please check back soon.</p>
               )}
+              <Button
+              onClick={() => window.location.reload()}
+              variant="default"
+            >
+              Try Again
+            </Button>
             </div>
           )}
         </div>
@@ -333,12 +200,6 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
         {/* Footer */}
         <div className="p-6 border-t border-gray-200 bg-gray-50">
           <div className="flex justify-center space-x-4">
-            <Button
-              onClick={() => window.location.reload()}
-              variant="default"
-            >
-              Try Again
-            </Button>
             <Button
               onClick={handleBackToHome}
               variant="outline"

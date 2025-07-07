@@ -6,6 +6,7 @@ import { JobResponse, JobStatus } from '@/types/job';
 function formatJobResponse(job: any): JobResponse {
   // Extract image URLs from the job document
   const imageUrls = job.image_urls || [];
+  const generatedImageUrls = job.generated_image_urls || [];
   
   return {
     id: job.$id,
@@ -20,7 +21,9 @@ function formatJobResponse(job: any): JobResponse {
       style: job.selected_style_name || 'Unknown',
       imageCount: imageUrls.length || 0,
       customerEmail: job.customer_email || '',
-      paymentStatus: job.payment_status || 'unknown'
+      paymentStatus: job.payment_status || 'unknown',
+      image_urls: imageUrls,
+      generated_image_urls: generatedImageUrls
     }
   };
 }
