@@ -7,26 +7,10 @@ const POLL_INTERVAL = 5 * 1000; // 5 seconds
 const MAX_ATTEMPTS = 360; // 30 minutes total
 
 // Types
-type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
-
-interface Job {
-  id: string;
-  status: JobStatus;
-  progress?: number;
-  imageUrls?: string[];
-  error?: string | null;
-  createdAt?: string;
-  completedAt?: string;
-  metadata?: {
-    style?: string;
-    imageCount?: number;
-    customerEmail?: string;
-    paymentStatus?: string;
-  };
-}
+import { JobResponse, JobStatus } from '@/types/job';
 
 interface UsePollJobStatusReturn {
-  job: Job | null;
+  job: JobResponse | null;
   isLoading: boolean;
   error: string | null;
 }
@@ -36,7 +20,7 @@ interface UsePollJobStatusReturn {
  * @param jobId The ID of the job to poll.
  */
 export function usePollJobStatus(jobId: string | null): UsePollJobStatusReturn {
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob] = useState<JobResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

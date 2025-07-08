@@ -1,4 +1,4 @@
-import { functions } from './appwrite';
+import { functions } from './appwriteServer';
 
 export interface FunctionExecution {
   $id: string;

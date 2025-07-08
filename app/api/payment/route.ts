@@ -1,9 +1,7 @@
 import Stripe from 'stripe';
 import { NextResponse } from 'next/server';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-05-28.basil',
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 interface CreateSessionRequest {
   price_data: {
@@ -61,16 +59,13 @@ export async function POST(req: Request) {
       metadata: {
         productName: price_data.product_data.name,
         selectedStyle: style,
+        // Note: Stripe metadata values have a character limit (500 characters).
+        // If imageUrls or fileIds arrays can be very large, consider storing
+        // them in a database linked by a unique ID in Stripe metadata.
         imageUrls: JSON.stringify(imageUrls),
-        fileIds: JSON.stringify(fileIds), // Store file IDs in metadata
-        customerEmail: customerEmail || ''
+        fileIds: JSON.stringify(fileIds),
       },
       customer_email: customerEmail,
-      payment_intent_data: {
-        metadata: {
-          session_id: 'cs_' + Math.random().toString(36).substring(2, 15)
-        }
-      }
     });
 
       return NextResponse.json({ url: session.url });
@@ -80,7 +75,7 @@ export async function POST(req: Request) {
     }
 
   } catch (error) {
-    console.error('Error creating checkout session:', error);
+    console.error('Stripe API error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: 'Failed to create checkout session' },
       { status: 500 }

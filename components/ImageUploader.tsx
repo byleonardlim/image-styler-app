@@ -46,48 +46,32 @@ function imageReducer(state: ImageState, action: ImageAction): ImageState {
       };
 
     case 'UPLOAD_SUCCESS':
+      const { [action.payload.index]: _removed, ...remainingProgressSuccess } = state.uploadProgress;
       return {
         ...state,
         fileIds: [...state.fileIds, action.payload.fileId],
         urlMapping: {
           ...state.urlMapping,
-          [action.payload.fileId]: action.payload.fileUrl, // Store the Appwrite URL from the response
+          [action.payload.fileId]: action.payload.fileUrl,
         },
-        // Clean up the blob URL since we have the Appwrite URL now
         previews: state.previews.map((preview, idx) => 
           idx === action.payload.index ? action.payload.fileUrl : preview
         ),
-        uploadProgress: Object.entries(state.uploadProgress).reduce(
-          (acc, [key, value]) => {
-            if (parseInt(key) !== action.payload.index) {
-              acc[parseInt(key)] = value;
-            }
-            return acc;
-          },
-          {} as Record<number, boolean>
-        ),
+        uploadProgress: remainingProgressSuccess,
       };
 
     case 'UPLOAD_ERROR':
-      // Remove the failed upload from state
       const newFiles = [...state.files];
       const newPreviews = [...state.previews];
       newFiles.splice(action.payload.index, 1);
       newPreviews.splice(action.payload.index, 1);
+      const { [action.payload.index]: _removedError, ...remainingProgressError } = state.uploadProgress;
 
       return {
         ...state,
         files: newFiles,
         previews: newPreviews,
-        uploadProgress: Object.entries(state.uploadProgress).reduce(
-          (acc, [key, value]) => {
-            if (parseInt(key) !== action.payload.index) {
-              acc[parseInt(key)] = value;
-            }
-            return acc;
-          },
-          {} as Record<number, boolean>
-        ),
+        uploadProgress: remainingProgressError,
       };
 
     case 'REMOVE_IMAGE':
@@ -112,6 +96,43 @@ function imageReducer(state: ImageState, action: ImageAction): ImageState {
         fileIds: updatedFileIds,
         urlMapping: updatedMapping,
         deletingIds: new Set([...state.deletingIds].filter(id => id !== removedFileId)),
+      };
+
+    case 'DELETE_START':
+      return {
+        ...state,
+        deletingIds: new Set(state.deletingIds).add(action.payload.fileId),
+      };
+
+    case 'DELETE_SUCCESS':
+      const fileIdToDelete = action.payload.fileId;
+      const indexToDelete = state.fileIds.indexOf(fileIdToDelete);
+
+      if (indexToDelete === -1) return state; // File not found in state
+
+      const newFilesAfterDelete = [...state.files];
+      const newPreviewsAfterDelete = [...state.previews];
+      const newFileIdsAfterDelete = [...state.fileIds];
+      const newUrlMappingAfterDelete = { ...state.urlMapping };
+
+      newFilesAfterDelete.splice(indexToDelete, 1);
+      newPreviewsAfterDelete.splice(indexToDelete, 1);
+      newFileIdsAfterDelete.splice(indexToDelete, 1);
+      delete newUrlMappingAfterDelete[fileIdToDelete];
+
+      return {
+        ...state,
+        files: newFilesAfterDelete,
+        previews: newPreviewsAfterDelete,
+        fileIds: newFileIdsAfterDelete,
+        urlMapping: newUrlMappingAfterDelete,
+        deletingIds: new Set([...state.deletingIds].filter(id => id !== fileIdToDelete)),
+      };
+
+    case 'DELETE_ERROR':
+      return {
+        ...state,
+        deletingIds: new Set([...state.deletingIds].filter(id => id !== action.payload.fileId)),
       };
 
     case 'CLEANUP':
@@ -277,28 +298,28 @@ export default function ImageUploader({
     
     if (!fileIdToDelete) return;
 
+    dispatch({
+      type: 'DELETE_START',
+      payload: { fileId: fileIdToDelete },
+    });
+
     try {
-      // Mark as deleting
-      dispatch({
-        type: 'REMOVE_IMAGE',
-        payload: { index },
-      });
-      
-      // Delete the file from storage
       await deleteImage(fileIdToDelete);
-      
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to delete image';
-      showToast(errorMessage, { type: 'destructive' });
-      
-      // Revert the removal if deletion fails
-      // The actual file will still be in the storage, but we'll keep the UI in sync
-      // by not removing it from the state
-    } finally {
+      dispatch({
+        type: 'DELETE_SUCCESS',
+        payload: { fileId: fileIdToDelete },
+      });
       // Clean up blob URL if it exists
       if (previewToDelete && previewToDelete.startsWith('blob:')) {
         URL.revokeObjectURL(previewToDelete);
       }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete image';
+      showToast(errorMessage, { type: 'destructive' });
+      dispatch({
+        type: 'DELETE_ERROR',
+        payload: { fileId: fileIdToDelete, error: errorMessage },
+      });
     }
   };
 

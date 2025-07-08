@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { JobResponse } from '@/types/job';
 
 const getApiUrl = (path: string) => {
@@ -16,15 +16,68 @@ const getApiUrl = (path: string) => {
   return `${baseUrl}${path}`;
 };
 
-const fetchJob = async (jobId: string): Promise<JobResponse> => {
-  const url = getApiUrl(`/api/v1/jobs/${jobId}`);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Failed to fetch job');
-  return res.json();
-};
-
 export function useJob(jobId: string) {
-  return use(fetchJob(jobId));
+  const [job, setJob] = useState<JobResponse | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchJobById = useCallback(async (id: string): Promise<JobResponse> => {
+    try {
+      const url = getApiUrl(`/api/v1/jobs/${id}`);
+      const res = await fetch(url, {
+        cache: 'no-store', // Prevent caching
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Failed to fetch job by ID:', {
+          status: res.status,
+          statusText: res.statusText,
+          errorData
+        });
+        throw new Error(errorData.error || 'Failed to fetch job');
+      }
+      
+      return res.json();
+    } catch (error) {
+      console.error('Error in fetchJobById:', error);
+      throw error;
+    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    
+    const fetchJob = async () => {
+      if (!jobId) {
+        setIsLoading(false);
+        return;
+      }
+      try {
+        const data = await fetchJobById(jobId);
+        if (isMounted) {
+          setJob(data);
+          setError(null);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err : new Error('An error occurred'));
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchJob();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [jobId, fetchJobById]);
+
+  return { job, error, isLoading };
 }
 
 

@@ -1,28 +1,26 @@
 import { NextResponse } from 'next/server';
-import { databases } from '@/lib/appwrite';
+import { databases } from '@/lib/appwriteServer';
 import { JobResponse, JobStatus } from '@/types/job';
 
 function formatJobResponse(job: any): JobResponse {
-  // Get generated image URLs, falling back to empty array
-  const generatedImageUrls = job.generated_image_urls || [];
+  const originalImageUrls = Array.isArray(job.image_urls) ? job.image_urls : [];
+  const generatedImageUrls = Array.isArray(job.generated_image_urls) ? job.generated_image_urls : [];
   
   return {
     id: job.$id,
     status: (job.job_status || 'pending') as JobStatus,
     progress: job.progress || 0,
     resultUrl: job.result_url || null,
-    // Only include imageUrls if we have generated images
-    imageUrls: generatedImageUrls.length > 0 ? generatedImageUrls : undefined,
+    imageUrls: originalImageUrls,
+    generatedImageUrls: generatedImageUrls,
     error: job.error_message || null,
     createdAt: job.$createdAt,
     updatedAt: job.$updatedAt,
     metadata: {
       style: job.selected_style_name || 'Unknown',
-      imageCount: generatedImageUrls.length,
+      imageCount: originalImageUrls.length,
       customerEmail: job.customer_email || '',
       paymentStatus: job.payment_status || 'unknown',
-      // Include the raw generated_image_urls in metadata for reference
-      generated_image_urls: generatedImageUrls.length > 0 ? generatedImageUrls : undefined
     }
   };
 }

@@ -9,21 +9,17 @@ export const ImagePreview = memo(({
   isUploading, 
   isDeleting 
 }: ImagePreviewProps) => {
-  const [imageSrc, setImageSrc] = useState<string>(src);
   const [isBlobUrl, setIsBlobUrl] = useState<boolean>(src.startsWith('blob:'));
 
-  // Update the image source when the src prop changes
+  // Update isBlobUrl when src changes
   useEffect(() => {
-    // Always prefer the non-blob URL if available
-    if (!isBlobUrl || !src.startsWith('blob:')) {
-      setImageSrc(src);
-    }
-  }, [src, isBlobUrl]);
+    setIsBlobUrl(src.startsWith('blob:'));
+  }, [src]);
 
   const handleImageLoad = () => {
     // If this was a blob URL and we've loaded the image, clean it up
-    if (isBlobUrl && imageSrc.startsWith('blob:')) {
-      URL.revokeObjectURL(imageSrc);
+    if (isBlobUrl && src.startsWith('blob:')) {
+      URL.revokeObjectURL(src);
       setIsBlobUrl(false);
     }
   };
@@ -31,16 +27,16 @@ export const ImagePreview = memo(({
   // Clean up any blob URLs when the component unmounts
   useEffect(() => {
     return () => {
-      if (isBlobUrl && imageSrc.startsWith('blob:')) {
-        URL.revokeObjectURL(imageSrc);
+      if (isBlobUrl && src.startsWith('blob:')) {
+        URL.revokeObjectURL(src);
       }
     };
-  }, [isBlobUrl, imageSrc]);
+  }, [isBlobUrl, src]);
 
   return (
     <div className="relative group">
       <img
-        src={imageSrc}
+        src={src}
         alt="Preview"
         className="w-full h-32 rounded-lg object-cover transition-opacity group-hover:opacity-90"
         onLoad={handleImageLoad}

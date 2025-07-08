@@ -11,7 +11,6 @@ interface CheckoutFormProps {
   onPayment: () => void;
   loading: boolean;
   disabled: boolean;
-  priceId: string;
   images: string[];
   style: string;
 }
@@ -20,7 +19,6 @@ export default function CheckoutForm({
   onPayment, 
   loading, 
   disabled, 
-  priceId,
   images,
   style 
 }: CheckoutFormProps) {
@@ -39,31 +37,27 @@ export default function CheckoutForm({
     }
 
     try {
-      const response = await fetch('/api/payment/create-checkout-session', {
+      const response = await fetch('/api/payment', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ priceId, images, style }),
+        body: JSON.stringify({ images, style }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create checkout session');
+        setError(errorData.error || 'Failed to create checkout session. Please try again.');
+        return;
       }
 
-      const { sessionId } = await response.json();
+      const { url } = await response.json();
       
       // Redirect to Stripe Checkout
-      const result = await stripe.redirectToCheckout({ sessionId });
+      window.location.assign(url);
 
-      if (result.error) {
-        setError(result.error.message);
-      } else {
-        onPayment();
-      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.');
     }
   };
 

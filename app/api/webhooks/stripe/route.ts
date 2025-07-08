@@ -1,7 +1,8 @@
 import Stripe from 'stripe';
 import { NextResponse } from 'next/server';
 import { Databases, Storage, ID, type Models } from 'node-appwrite';
-import { databases, storage, functions } from '@/lib/appwrite';  // Import initialized instances
+import { databases, storage, functions } from '@/lib/appwriteServer';  // Import initialized instances
+import { getFilePreviewUrl, getFileViewUrl, appwriteBucketId } from '@/lib/appwrite';
 import { triggerStyleTransfer } from '@/lib/triggerFunction';
 import { Query } from 'node-appwrite';
 import { nanoid } from 'nanoid';
@@ -47,6 +48,7 @@ const log = {
 interface ImageUploadResult {
   fileId: string;
   fileUrl: string;
+  previewUrl: string;
 }
 
 interface JobData extends Models.Document {
@@ -78,9 +80,7 @@ interface CheckoutSessionMetadata {
   fileIds?: string | string[];
 }
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-05-28.basil',
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 // Helper functions
 // Generate a unique job ID using nanoid
@@ -109,42 +109,23 @@ const uploadImageToStorage = async (
   
   validateImageUpload(fileBuffer, contentType);
 
-  const formData = new FormData();
-  const blob = new Blob([fileBuffer], { type: contentType });
-  formData.append('fileId', ID.unique());
-  formData.append('file', new File([blob], fileName, { type: contentType }));
+  const bucketId = appwriteBucketId;
 
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/images/files`,
-    {
-      method: 'POST',
-      headers: {
-        'X-Appwrite-Project': process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!,
-        'X-Appwrite-Key': process.env.APPWRITE_API_KEY!,
-      },
-      body: formData,
-    }
+  const file = new File([fileBuffer], fileName, { type: contentType });
+
+  const uploadedFile = await storage.createFile(
+    bucketId,
+    ID.unique(),
+    file
   );
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`Failed to upload file: ${errorText}`);
-  }
-
-  const uploadedFile = await response.json() as StorageFileResponse;
-  if (!uploadedFile?.$id) {
-    throw new Error('No file data returned from Appwrite');
-  }
-
-  // Get the file preview URL
-  const filePreview = storage.getFilePreview('images', uploadedFile.$id);
-  const fileUrl = typeof filePreview === 'string' 
-    ? filePreview 
-    : `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/images/files/${uploadedFile.$id}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
+  const fileUrl = getFileViewUrl(bucketId, uploadedFile.$id);
+  const filePreviewUrl = getFilePreviewUrl(bucketId, uploadedFile.$id, 800);
 
   return {
     fileId: uploadedFile.$id,
-    fileUrl
+    fileUrl: fileUrl,
+    previewUrl: filePreviewUrl,
   };
 };
 
@@ -266,61 +247,18 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
   // If this payment intent is associated with a checkout session, we'll handle it there
   if (paymentIntent.metadata?.session_id) {
     const sessionId = paymentIntent.metadata.session_id;
-    console.log('Processing checkout session:', sessionId);
+    log.info('Processing checkout session from payment intent', { sessionId });
     
     try {
-      const session = await stripe.checkout.sessions.retrieve(sessionId, {
-        expand: ['line_items']
-      });
-      
-      console.log('Retrieved session:', {
-        sessionId: session.id,
-        paymentStatus: session.payment_status,
-        customerEmail: session.customer_details?.email
-      });
-      
-      if (session.payment_status === 'paid') {
-        try {
-          await handleCheckoutSessionCompleted({
-            id: 'evt_' + Date(),
-            object: 'event',
-            api_version: '2025-05-28.basil',
-            created: Math.floor(Date.now() / 1000),
-            data: { object: session },
-            livemode: false,
-            pending_webhooks: 0,
-            request: null,
-            type: 'checkout.session.completed'
-          } as Stripe.Event);
-          console.log('Successfully processed checkout session:', sessionId);
-        } catch (error) {
-          log.error('Error in handleCheckoutSessionCompleted', error, {
-            sessionId,
-            paymentIntentId: paymentIntent.id
-          });
-          throw error; // Re-throw to be caught by the outer try-catch
-        }
-      }
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      await processCheckoutSessionCompletion(session);
+      log.info('Successfully processed checkout session from payment intent', { sessionId });
     } catch (error) {
-      if (error instanceof Error) {
-        log.error('Error retrieving checkout session', error, {
-          sessionId,
-          paymentIntentId: paymentIntent.id
-        });
-        
-        if ('type' in error && 'code' in error && 
-            error.type === 'StripeInvalidRequestError' && 
-            error.code === 'resource_missing') {
-          log.warn('Checkout session not found for successful payment', {
-            sessionId,
-            paymentIntentId: paymentIntent.id,
-            message: 'This might indicate a stale webhook event.'
-          });
-          // Consider creating a support ticket or logging to an error tracking service
-          return { success: true, warning: 'Checkout session not found' };
-        }
-      }
-      throw error; // Re-throw the error if it's not a missing session
+      log.error('Error processing checkout session from payment intent', error, {
+        sessionId,
+        paymentIntentId: paymentIntent.id
+      });
+      throw error; // Re-throw to be caught by the outer try-catch
     }
   } else {
     log.info('No session_id found in payment intent metadata');
@@ -382,8 +320,7 @@ interface StorageFileResponse {
   chunksUploaded: number;
 }
 
-async function handleCheckoutSessionCompleted(event: Stripe.Event) {
-  const session = event.data.object as Stripe.Checkout.Session;
+async function processCheckoutSessionCompletion(session: Stripe.Checkout.Session) {
   const metadata = session.metadata as unknown as CheckoutSessionMetadata || {};
   const userEmail = session.customer_details?.email || 'unknown@example.com';
   let job: Models.Document | null = null;
@@ -430,7 +367,9 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
     
     // Generate Appwrite URLs from file IDs
     const imageUrls = fileIds.map(fileId => 
-      `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${fileId}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`
+      const imageUrls = fileIds.map(fileId => 
+      getFileViewUrl(appwriteBucketId, fileId)
+    );
     );
     
     // Create the job document with status 'pending' and all required fields
@@ -497,6 +436,11 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
     // Re-throw the error to mark the webhook as failed
     throw error;
   }
+}
+
+async function handleCheckoutSessionCompleted(event: Stripe.Event) {
+  const session = event.data.object as Stripe.Checkout.Session;
+  await processCheckoutSessionCompletion(session);
 }
 
 // Helper function to check required environment variables

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { storage } from '@/lib/appwrite';
+import { storage } from '@/lib/appwriteServer';
+import { getFilePreviewUrl, getFileViewUrl, appwriteBucketId } from '@/lib/appwrite';
 import { ID } from 'node-appwrite';
 
 // Add CORS headers
@@ -24,31 +25,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // Convert file to buffer
-    const buffer = Buffer.from(await file.arrayBuffer());
-    
-    // Create a File object with the buffer
-    const fileObj = new File([buffer], file.name, { 
-      type: file.type,
-      lastModified: file.lastModified 
-    });
-
-    const bucketId = process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID!;
+    const bucketId = appwriteBucketId;
     
     // Upload to Appwrite Storage
     const result = await storage.createFile(
       bucketId,
       ID.unique(),
-      fileObj
+      file, // Directly use the file object
     );
-
-    // Get the file URL - Use the Appwrite CDN URL for public access
-    const fileUrl = `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${bucketId}/files/${result.$id}/preview?width=800&project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
 
     // Return the response with CORS headers
     return NextResponse.json({
       fileId: result.$id,
-      fileUrl: `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${bucketId}/files/${result.$id}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`,
+      fileUrl: getFileViewUrl(bucketId, result.$id),
+      previewUrl: getFilePreviewUrl(bucketId, result.$id, 800),
       name: file.name,
       size: file.size,
       type: file.type,

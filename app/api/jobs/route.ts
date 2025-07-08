@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
-import { databases } from '@/lib/appwrite';
+import { databases } from '@/lib/appwriteServer';
 import { Query } from 'node-appwrite';
 import { JobResponse, JobStatus } from '@/types/job';
 
 function formatJobResponse(job: any): JobResponse {
-  // Extract image URLs from the job document
-  const imageUrls = job.image_urls || [];
-  const generatedImageUrls = job.generated_image_urls || [];
+  // Ensure image URLs are always arrays
+  const imageUrls = Array.isArray(job.image_urls) ? job.image_urls : [];
+  const generatedImageUrls = Array.isArray(job.generated_image_urls) ? job.generated_image_urls : [];
   
   return {
     id: job.$id,
     status: (job.job_status || 'pending') as JobStatus,
     progress: job.progress || 0,
     resultUrl: job.result_url || null,
-    imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+    imageUrls: imageUrls,
+    generatedImageUrls: generatedImageUrls,
     error: job.error_message || null,
     createdAt: job.$createdAt,
     updatedAt: job.$updatedAt,
@@ -22,8 +23,6 @@ function formatJobResponse(job: any): JobResponse {
       imageCount: imageUrls.length || 0,
       customerEmail: job.customer_email || '',
       paymentStatus: job.payment_status || 'unknown',
-      image_urls: imageUrls,
-      generated_image_urls: generatedImageUrls
     }
   };
 }

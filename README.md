@@ -1,43 +1,63 @@
-# AI SDK, Next.js, and OpenAI Chat Example
+# Image Styler App
 
-This example shows how to use the [AI SDK](https://ai-sdk.dev/docs) with [Next.js](https://nextjs.org/) and [OpenAI](https://openai.com) to create a ChatGPT-like AI-powered streaming chat bot.
+This is an image styling application built with Next.js, utilizing Appwrite for backend services, Stripe for payment processing, and Redis for job management.
 
-## Deploy your own
+## Features
 
-Deploy the example using [Vercel](https://vercel.com?utm_source=github&utm_medium=readme&utm_campaign=ai-sdk-example):
+*   **Image Upload**: Users can upload images for styling.
+*   **Image Styling Jobs**: Images are processed through a job system, likely involving AI or other styling algorithms.
+*   **Payment Integration**: Secure payment processing powered by Stripe for premium features or job execution.
+*   **Job Status Polling**: Real-time updates on the status of image styling jobs.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fai%2Ftree%2Fmain%2Fexamples%2Fnext-openai&env=OPENAI_API_KEY&project-name=ai-sdk-next-openai&repository-name=ai-sdk-next-openai)
+## Technologies Used
 
-## How to use
+*   **Next.js**: React framework for building the web application.
+*   **Appwrite**: Open-source backend-as-a-service for authentication, database, and functions.
+*   **Stripe**: Payment processing for handling transactions.
+*   **Redis**: In-memory data store, likely used for job queues or caching.
+*   **Tailwind CSS**: Utility-first CSS framework for styling.
+*   **Radix UI**: UI components for building accessible and customizable user interfaces.
 
-Execute [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app) with [npm](https://docs.npmjs.com/cli/init), [Yarn](https://yarnpkg.com/lang/en/docs/cli/create/), or [pnpm](https://pnpm.io) to bootstrap the example:
+## Getting Started
 
-```bash
-npx create-next-app --example https://github.com/vercel/ai/tree/main/examples/next-openai next-openai-app
-```
+To run this project locally, follow these steps:
 
-```bash
-yarn create next-app --example https://github.com/vercel/ai/tree/main/examples/next-openai next-openai-app
-```
+1.  **Clone the repository**:
+    ```bash
+    git clone <repository-url>
+    cd image-styler-app
+    ```
+2.  **Install dependencies**:
+    ```bash
+    pnpm install
+    ```
+3.  **Set up Environment Variables**:
+    Create a `.env.local` file in the root directory and add the necessary environment variables. These typically include:
+    *   Appwrite project ID and API keys
+    *   Stripe publishable and secret keys
+    *   Redis connection string
+    *   Next.js specific environment variables
 
-```bash
-pnpm create next-app --example https://github.com/vercel/ai/tree/main/examples/next-openai next-openai-app
-```
+    Refer to `.env.local.example` (if available) for a list of required variables.
 
-To run the example locally you need to:
+4.  **Run the development server**:
+    ```bash
+    pnpm dev
+    ```
 
-1. Sign up at [OpenAI's Developer Platform](https://platform.openai.com/signup).
-2. Go to [OpenAI's dashboard](https://platform.openai.com/account/api-keys) and create an API KEY.
-3. If you choose to use external files for attachments, then create a [Vercel Blob Store](https://vercel.com/docs/storage/vercel-blob).
-4. Set the required environment variable as the token value as shown [the example env file](./.env.local.example) but in a new file called `.env.local`
-5. `pnpm install` to install the required dependencies.
-6. `pnpm dev` to launch the development server.
+    Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
+
+## Project Structure
+
+*   `app/`: Next.js application routes and API endpoints.
+*   `components/`: Reusable React components, including UI elements.
+*   `hooks/`: Custom React hooks for shared logic.
+*   `lib/`: Utility functions and API service integrations (e.g., Appwrite, Stripe).
+*   `types/`: TypeScript type definitions.
 
 ## Learn More
 
-To learn more about OpenAI, Next.js, and the AI SDK take a look at the following resources:
-
-- [AI SDK docs](https://ai-sdk.dev/docs)
-- [Vercel AI Playground](https://ai-sdk.dev/playground)
-- [OpenAI Documentation](https://platform.openai.com/docs) - learn about OpenAI features and API.
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+*   [Next.js Documentation](https://nextjs.org/docs)
+*   [Appwrite Documentation](https://appwrite.io/docs)
+*   [Stripe Documentation](https://stripe.com/docs)
+*   [Redis Documentation](https://redis.io/docs/)

@@ -1,23 +1,25 @@
-import { Client, Account, Storage, Databases, Functions, ID } from 'node-appwrite';
+import { ID } from 'node-appwrite';
 
 const appwriteEndpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!;
 const appwriteProjectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!;
-const appwriteApiKey = process.env.APPWRITE_API_KEY!;
+export const appwriteBucketId = process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID!;
 
-if (!appwriteEndpoint || !appwriteProjectId || !appwriteApiKey) {
-  throw new Error('Missing Appwrite environment variables');
+if (!appwriteEndpoint || !appwriteProjectId) {
+  throw new Error('Missing Appwrite environment variables (NEXT_PUBLIC_APPWRITE_ENDPOINT or NEXT_PUBLIC_APPWRITE_PROJECT_ID)');
 }
 
-// Create a server client with admin privileges
-const client = new Client()
-  .setEndpoint(appwriteEndpoint)
-  .setProject(appwriteProjectId)
-  .setKey(appwriteApiKey);
-
-// Initialize services
-export const account = new Account(client);
-export const storage = new Storage(client);
-export const databases = new Databases(client);
-export const functions = new Functions(client);
-
 export { ID };
+
+export function getFilePreviewUrl(bucketId: string, fileId: string, width?: number, height?: number): string {
+  const url = new URL(`${appwriteEndpoint}/storage/buckets/${bucketId}/files/${fileId}/preview`);
+  url.searchParams.append('project', appwriteProjectId);
+  if (width) url.searchParams.append('width', width.toString());
+  if (height) url.searchParams.append('height', height.toString());
+  return url.toString();
+}
+
+export function getFileViewUrl(bucketId: string, fileId: string): string {
+  const url = new URL(`${appwriteEndpoint}/storage/buckets/${bucketId}/files/${fileId}/view`);
+  url.searchParams.append('project', appwriteProjectId);
+  return url.toString();
+}

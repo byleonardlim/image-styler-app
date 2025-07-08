@@ -1,55 +1,39 @@
+import { getFileViewUrl, appwriteBucketId } from '@/lib/appwrite';
+
 const API_ENDPOINTS = {
   UPLOAD: '/api/upload',
   DELETE: '/api/delete',
 } as const;
 
 const generateFileUrl = (fileId: string): string => {
-  return `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${fileId}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`;
+  return getFileViewUrl(appwriteBucketId, fileId);
 };
 
-export const uploadImage = async (file: File, onProgress?: (progress: boolean) => void): Promise<{ fileId: string; fileUrl: string }> => {
+export const uploadImage = async (file: File): Promise<{ fileId: string; fileUrl: string; previewUrl: string }> => {
   const formData = new FormData();
   formData.append('file', file);
   
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) {
-        onProgress(true);
-      }
-    };
-    
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        const result = JSON.parse(xhr.responseText);
-        // Ensure we have both fileId and fileUrl from the server
-        if (!result.fileId) {
-          reject(new Error('No file ID received from server'));
-          return;
-        }
-        
-        // Generate the URL if not provided by the server
-        const fileUrl = result.fileUrl || generateFileUrl(result.fileId);
-        if (!fileUrl) {
-          reject(new Error('Failed to generate file URL'));
-          return;
-        }
-        
-        resolve({
-          fileId: result.fileId,
-          fileUrl: fileUrl
-        });
-      } else {
-        reject(new Error(xhr.statusText || 'Upload failed'));
-      }
-    };
-    
-    xhr.onerror = () => reject(new Error('Network error'));
-    xhr.open('POST', API_ENDPOINTS.UPLOAD, true);
-    xhr.setRequestHeader('Accept', 'application/json');
-    xhr.send(formData);
+  const response = await fetch(API_ENDPOINTS.UPLOAD, {
+    method: 'POST',
+    body: formData,
   });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Upload failed');
+  }
+
+  const result = await response.json();
+  
+  if (!result.fileId || !result.fileUrl || !result.previewUrl) {
+    throw new Error('Invalid response from server: missing fileId, fileUrl, or previewUrl');
+  }
+  
+  return {
+    fileId: result.fileId,
+    fileUrl: result.fileUrl,
+    previewUrl: result.previewUrl,
+  };
 };
 
 export const deleteImage = async (fileId: string): Promise<boolean> => {

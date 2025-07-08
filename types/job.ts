@@ -15,6 +15,7 @@ export type JobResponse = {
   progress: number;
   resultUrl: string | null;
   imageUrls?: string[];
+  generatedImageUrls?: string[];
   error: string | null;
   createdAt: string;
   updatedAt: string;

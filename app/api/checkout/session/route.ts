@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-05-28.basil',
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function GET(request: Request) {
   try {
@@ -33,7 +31,7 @@ export async function GET(request: Request) {
       created: session.created,
     });
   } catch (error) {
-    console.error('Error fetching session:', error);
+    console.error('Error fetching session:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: 'Failed to fetch session details' },
       { status: 500 }

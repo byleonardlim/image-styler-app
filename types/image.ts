@@ -22,6 +22,9 @@ export type ImageAction =
   | { type: 'UPLOAD_SUCCESS'; payload: { index: number; fileId: string; fileUrl: string } }
   | { type: 'UPLOAD_ERROR'; payload: { index: number; error: string } }
   | { type: 'REMOVE_IMAGE'; payload: { index: number } }
+  | { type: 'DELETE_START'; payload: { fileId: string } }
+  | { type: 'DELETE_SUCCESS'; payload: { fileId: string } }
+  | { type: 'DELETE_ERROR'; payload: { fileId: string; error: string } }
   | { type: 'CLEANUP' };
 
 export interface ImagePreviewProps {
