@@ -13,11 +13,12 @@ function formatJobResponse(job: any): JobResponse {
     status: (job.job_status || 'pending') as JobStatus,
     progress: job.progress || 0,
     resultUrl: job.result_url || null,
-    imageUrls: imageUrls,
-    generatedImageUrls: generatedImageUrls,
+    originalImageUrls: imageUrls,
+    processedImages: generatedImageUrls,
     error: job.error_message || null,
     createdAt: job.$createdAt,
     updatedAt: job.$updatedAt,
+    completedAt: job.completed_at || null,
     metadata: {
       style: job.selected_style_name || 'Unknown',
       imageCount: imageUrls.length || 0,
@@ -33,6 +34,8 @@ export async function GET(request: Request) {
     const sessionId = searchParams.get('sessionId');
     const jobId = searchParams.get('id');
 
+    console.log(`[API/jobs] Received request. sessionId: ${sessionId}, jobId: ${jobId}`);
+
     if (sessionId) {
       // Handle session-based lookup
       const result = await databases.listDocuments(
@@ -45,6 +48,8 @@ export async function GET(request: Request) {
         ]
       );
 
+      console.log(`[API/jobs] Session lookup result documents length: ${result.documents.length}`);
+
       if (result.documents.length === 0) {
         return NextResponse.json(
           { error: 'No job found with the provided session ID' },
@@ -54,6 +59,7 @@ export async function GET(request: Request) {
 
       // Return the most recent matching job
       const job = result.documents[0];
+      console.log(`[API/jobs] Found job by session: ${job.$id}`);
       return NextResponse.json(formatJobResponse(job));
     } 
     
@@ -65,8 +71,10 @@ export async function GET(request: Request) {
           process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
           jobId
         );
+        console.log(`[API/jobs] Found job by ID: ${job.$id}`);
         return NextResponse.json(formatJobResponse(job));
       } catch (error) {
+        console.error(`[API/jobs] Error finding job by ID ${jobId}:`, error);
         return NextResponse.json(
           { error: 'No job found with the provided ID' },
           { status: 404 }
@@ -79,7 +87,7 @@ export async function GET(request: Request) {
       { status: 400 }
     );
   } catch (error: unknown) {
-    console.error('Error in jobs API:', error);
+    console.error('[API/jobs] Error in jobs API:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return NextResponse.json(
       { 

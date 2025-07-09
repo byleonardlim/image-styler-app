@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { databases } from '@/lib/appwriteServer';
 import { JobResponse, JobStatus } from '@/types/job';
 
@@ -11,8 +11,8 @@ function formatJobResponse(job: any): JobResponse {
     status: (job.job_status || 'pending') as JobStatus,
     progress: job.progress || 0,
     resultUrl: job.result_url || null,
-    imageUrls: originalImageUrls,
-    generatedImageUrls: generatedImageUrls,
+    originalImageUrls: originalImageUrls,
+    processedImages: generatedImageUrls,
     error: job.error_message || null,
     createdAt: job.$createdAt,
     updatedAt: job.$updatedAt,
@@ -25,19 +25,14 @@ function formatJobResponse(job: any): JobResponse {
   };
 }
 
-// This tells Next.js which paths to pre-render
-export async function generateStaticParams() {
-  return [];
-}
+
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Await the params if it's a Promise (for future compatibility)
-    const resolvedParams = await Promise.resolve(params);
-    const { id: jobId } = resolvedParams;
+    const { id: jobId } = params;
 
     if (!jobId) {
       return NextResponse.json(

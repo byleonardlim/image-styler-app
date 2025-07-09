@@ -247,13 +247,7 @@ export default function ImageUploader({
 
           // Upload the file
           const { fileId, fileUrl } = await uploadImage(
-            file,
-            (inProgress) => {
-              dispatch({
-                type: 'UPLOAD_START',
-                payload: { index: fileIndex, inProgress },
-              });
-            }
+            file
           );
 
           // Update state with successful upload

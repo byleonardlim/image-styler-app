@@ -1,67 +1,68 @@
+
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
-import { useJobBySession } from '@/hooks/useJob';
+import { usePollJobStatus } from '@/hooks/usePollJobStatus';
 import { Button } from "@/components/ui/button";
 import { AlertCircle } from "lucide-react";
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
+const MAX_JOB_ID_RETRIES = 10; // Increased retries
+const JOB_ID_RETRY_DELAY = 3000; // 3 seconds delay
+
 function JobRedirector({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const [retryCount, setRetryCount] = useState(0);
-  
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobIdRetryCount, setJobIdRetryCount] = useState(0);
+  const { job, isLoading, error } = usePollJobStatus(jobId);
+
   useEffect(() => {
     if (!sessionId) return;
-    
-    const checkJob = async () => {
+
+    const fetchJobId = async () => {
+      if (jobIdRetryCount >= MAX_JOB_ID_RETRIES) {
+        throw new Error('Failed to retrieve job ID after multiple attempts. Please try again later or contact support.');
+      }
+
       try {
-        const response = await fetch(`/api/jobs?sessionId=${encodeURIComponent(sessionId)}`, {
-          cache: 'no-store',
-        });
-        
+        const response = await fetch(`/api/jobs?sessionId=${encodeURIComponent(sessionId)}`);
         if (response.ok) {
-          const job = await response.json();
-          if (job?.id) {
-            router.push(`/jobs/${job.id}`);
-            return;
-          }
-        }
-        
-        // If we get here, the job wasn't found
-        if (retryCount < 3) {
-          if (retryCount < 2) {
-            setTimeout(() => setRetryCount(c => c + 1), 2000);
+          const data = await response.json();
+          if (data?.id) {
+            setJobId(data.id);
           } else {
-            throw new Error('We couldn\'t find your job. Please try again later or contact support.');
+            // If job ID is not immediately available, retry fetching the session ID
+            setJobIdRetryCount(prev => prev + 1);
+            setTimeout(fetchJobId, JOB_ID_RETRY_DELAY); 
           }
         } else {
-          throw new Error('We couldn\'t find your job. Please try again later or contact support.');
+          throw new Error('Failed to retrieve job ID from session.');
         }
-      } catch (error) {
-        console.error('Error fetching job:', error);
-        if (retryCount < 3) {
-          if (retryCount < 2) {
-            setTimeout(() => setRetryCount(c => c + 1), 2000);
-          } else {
-            throw error;
-          }
-          // Retry after a delay on error
-          setTimeout(() => setRetryCount(c => c + 1), 2000);
-        } else {
-          throw error;
-        }
+      } catch (err) {
+        console.error('Error fetching job ID by session:', err);
+        setJobIdRetryCount(prev => prev + 1);
+        setTimeout(fetchJobId, JOB_ID_RETRY_DELAY); 
       }
     };
-    
-    const timer = setTimeout(checkJob, 1000);
-    return () => clearTimeout(timer);
-  }, [sessionId, retryCount, router]);
-  
+
+    fetchJobId();
+  }, [sessionId, jobIdRetryCount]);
+
+  useEffect(() => {
+    if (job && job.id) {
+      router.push(`/jobs/${job.id}`);
+    }
+  }, [job, router]);
+
+  if (error) {
+    throw new Error(error); // Propagate error to ErrorBoundary
+  }
+
   return (
     <div className="text-center p-8">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-      <p className="text-gray-600">Preparing your job... {retryCount > 0 && `(Retry ${retryCount}/3)`}</p>
+      <p className="text-gray-600">Preparing your job... {jobIdRetryCount > 0 && `(Attempt ${jobIdRetryCount}/${MAX_JOB_ID_RETRIES})`}</p>
     </div>
   );
 }

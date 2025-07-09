@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { databases } from '@/lib/appwrite';
+import { databases } from '@/lib/appwriteServer';
 
 // This tells Next.js which paths to pre-render
 export async function generateStaticParams() {
@@ -8,11 +8,12 @@ export async function generateStaticParams() {
 }
 
 // This is a dynamic route handler
-export async function GET(request: Request) {
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    const url = new URL(request.url);
-    const pathSegments = url.pathname.split('/');
-    const jobId = pathSegments[pathSegments.length - 1];
+    const jobId = params.id;
 
     if (!jobId) {
       return NextResponse.json(

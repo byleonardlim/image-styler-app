@@ -1,10 +1,10 @@
 "use client";
 
-import { use } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Check, Download, Loader2 } from "lucide-react";
 import { usePollJobStatus } from '@/hooks/usePollJobStatus';
+import React from 'react';
 
 interface JobStatusPageProps {
   params: Promise<{ id: string }>;
@@ -12,14 +12,14 @@ interface JobStatusPageProps {
 
 export default function JobStatusPage({ params }: JobStatusPageProps) {
   const router = useRouter();
-  const { id: jobId } = use(params);
+  const { id: jobId } = React.use(params);
   const { job, isLoading, error } = usePollJobStatus(jobId);
 
   const handleBackToHome = () => {
     router.push('/');
   };
 
-  const generatedImageUrls = job?.imageUrls || [];
+  const generatedImageUrls = job?.processedImages || [];
   const hasMultipleImages = generatedImageUrls.length > 1;
   const isJobCompleted = job?.status === 'completed';
 

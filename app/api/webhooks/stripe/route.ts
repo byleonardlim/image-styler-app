@@ -6,6 +6,8 @@ import { getFilePreviewUrl, getFileViewUrl, appwriteBucketId } from '@/lib/appwr
 import { triggerStyleTransfer } from '@/lib/triggerFunction';
 import { Query } from 'node-appwrite';
 import { nanoid } from 'nanoid';
+import { Resend } from 'resend';
+
 
 // Constants
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -58,15 +60,15 @@ interface JobData extends Models.Document {
   stripe_payment_intent: string;
   customer_email: string;
   customer_name: string;
-  job_status: 'pending' | 'processing' | 'completed' | 'failed';
+  job_status: 'pending' | 'processing' | 'completed' | 'failed' | 'queuing';
   payment_status: string;
   payment_amount: number;
   payment_currency: string;
   selected_style_name: string;
   image_urls: string[];  // Array to store URLs of the uploaded images
   function_execution_id?: string;  // Store the Appwrite Function execution ID
-  created_at: Date;
-  updated_at: Date;
+  created_at: string;
+  updated_at: string;
   // Allows for additional dynamic properties on the object
   [key: string]: any;
 }
@@ -81,6 +83,7 @@ interface CheckoutSessionMetadata {
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const resend = new Resend(process.env.RESEND_API_KEY!);
 
 // Helper functions
 // Generate a unique job ID using nanoid
@@ -129,9 +132,37 @@ const uploadImageToStorage = async (
   };
 };
 
+const sendJobConfirmationEmail = async (job: JobData | null) => {
+      if (!job) {
+        log.warn('sendJobConfirmationEmail called with null job');
+        return;
+    }
+    try {
+    const { customer_email, customer_name, $id: jobId } = job;
+    const jobUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/jobs/${jobId!}`;
+
+    await resend.emails.send({
+      from: 'onboarding@resend.dev',
+      to: customer_email!,
+      subject: 'Your Image Styling Job is Ready!',
+      html: `
+        <h1>Hi ${customer_name || 'there'},</h1>
+        <p>Your payment was successful and your image styling job has been created.</p>
+        <p>You can view the status of your job here:</p>
+        <a href="${jobUrl}">${jobUrl}</a>
+        <p>Thanks for using Image Styler!</p>
+      `,
+    });
+
+    log.info('Job confirmation email sent successfully', { jobId: job.$id });
+  } catch (error) {
+    log.error('Failed to send job confirmation email', error, { jobId: job?.$id });
+  }
+};
+
 const createJob = async function createJob(
   session: Stripe.Checkout.Session,
-  imageUrls: string[] = [],
+  imageUrls: string[],
 ) {
   try {
     const customerName = session.customer_details?.name || 'Guest';
@@ -204,19 +235,26 @@ const createJob = async function createJob(
   }
 };
 
-const updateJobWithImage = async (
+const updateJob = async function updateJob(
   jobId: string,
-  imageUrl: string
-): Promise<void> => {
-  await databases.updateDocument(
-    process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-    process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
-    jobId,
-    {
-      profile_image_url: imageUrl,
-      updated_at: new Date().toISOString()
-    }
-  );
+  data: Partial<JobData>
+) {
+  try {
+    const updatedJob = await databases.updateDocument(
+      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+      process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
+      jobId,
+      {
+        ...data,
+        updated_at: new Date().toISOString(),
+      }
+    );
+    log.info('Job document updated successfully', { jobId, data });
+    return updatedJob;
+  } catch (error) {
+    log.error('Failed to update job', error, { jobId, data });
+    throw error;
+  }
 };
 
 const findJobBySessionId = async (sessionId: string): Promise<JobData | null> => {
@@ -226,6 +264,7 @@ const findJobBySessionId = async (sessionId: string): Promise<JobData | null> =>
       process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
       [Query.equal('stripe_session_id', sessionId)]
     );
+    log.info('findJobBySessionId result', { sessionId, documentsFound: result.documents.length });
     
     return result.documents.length > 0 ? result.documents[0] as unknown as JobData : null;
   } catch (error) {
@@ -321,31 +360,12 @@ interface StorageFileResponse {
 }
 
 async function processCheckoutSessionCompletion(session: Stripe.Checkout.Session) {
+  log.info('processCheckoutSessionCompletion called', { sessionId: session.id });
   const metadata = session.metadata as unknown as CheckoutSessionMetadata || {};
   const userEmail = session.customer_details?.email || 'unknown@example.com';
   let job: Models.Document | null = null;
   
   try {
-    // Check if job already exists for this session
-    const existingJob = await findJobBySessionId(session.id);
-    if (existingJob) {
-      log.info('Job already exists for session', { sessionId: session.id });
-      return;
-    }
-
-    // Get the payment intent to check if payment was successful
-    const paymentIntent = await stripe.paymentIntents.retrieve(
-      session.payment_intent as string
-    );
-
-    if (paymentIntent.status !== 'succeeded') {
-      log.info('Payment not successful, skipping job creation', {
-        sessionId: session.id,
-        paymentStatus: paymentIntent.status
-      });
-      return;
-    }
-
     // Get file IDs from metadata
     let fileIds: string[] = [];
     if (metadata.fileIds) {
@@ -367,38 +387,58 @@ async function processCheckoutSessionCompletion(session: Stripe.Checkout.Session
     
     // Generate Appwrite URLs from file IDs
     const imageUrls = fileIds.map(fileId => 
-      const imageUrls = fileIds.map(fileId => 
       getFileViewUrl(appwriteBucketId, fileId)
     );
-    );
-    
-    // Create the job document with status 'pending' and all required fields
-    job = await createJob(session, imageUrls);
-    
-    // Update the job with all required fields for the processor
-    await databases.updateDocument(
-      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-      process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
-      job.$id,
-      {
-        job_status: 'queuing',  // This will be picked up by the cron job
-        image_urls: imageUrls,  // Match the expected field name in the processor
-        selected_style_name: metadata.selectedStyle || 'default',
-        updated_at: new Date().toISOString(),
-        // Include any other fields that might be required by the processor
-        stripe_session_id: session.id,
-        customer_email: session.customer_details?.email || 'unknown@example.com',
-        payment_status: session.payment_status || 'unknown',
-        created_at: new Date().toISOString()
+
+    // Check if job already exists for this session
+    const existingJob = await findJobBySessionId(session.id);
+
+    if (existingJob) {
+      log.info('Job already exists for session, checking status', { sessionId: session.id, jobId: existingJob.$id, status: existingJob.job_status });
+      // If job is not completed or failed, update it. Otherwise, do nothing.
+      if (existingJob.job_status !== 'completed' && existingJob.job_status !== 'failed') {
+        job = await updateJob(existingJob.$id, {
+          job_status: 'queuing',
+          image_urls: imageUrls,
+          selected_style_name: metadata.selectedStyle || 'default',
+          payment_status: session.payment_status || 'unknown',
+          updated_at: new Date().toISOString(),
+        });
+        log.info('Updated existing job', { jobId: job.$id, status: job.job_status });
+      } else {
+        log.info('Existing job is already completed or failed, skipping update', { sessionId: session.id, jobId: existingJob.$id, status: existingJob.job_status });
+        return; // Job is already in a final state, no need to process further
       }
-    );
+    } else {
+      // Get the payment intent to check if payment was successful
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        session.payment_intent as string
+      );
+
+      if (paymentIntent.status !== 'succeeded') {
+        log.info('Payment not successful, skipping job creation', {
+          sessionId: session.id,
+          paymentStatus: paymentIntent.status
+        });
+        return;
+      }
+
+      // Create the job document with status 'pending' and all required fields
+      job = await createJob(session, imageUrls);
+      log.info('Created new job', { jobId: job.$id, status: job.job_status });
+
+      // Send job confirmation email
+      await sendJobConfirmationEmail(job as JobData);
+    }
     
-    log.info('Created and queued job for processing', {
-      sessionId: session.id,
-      jobId: job.$id,
-      imageCount: imageUrls.length,
-      status: 'pending'
-    });
+    // Trigger the style transfer function if a job was created or updated and is in 'queuing' state
+    if (job && job.job_status === 'queuing') {
+      log.info('Triggering style transfer function', { jobId: job.$id });
+      const execution = await triggerStyleTransfer(job.$id, job.image_urls, job.selected_style_name);
+      await updateJob(job.$id, { function_execution_id: execution });
+      log.info('Style transfer function triggered', { jobId: job.$id, executionId: execution });
+    }
+
   } catch (error) {
     // Log error details
     const errorDetails = {
@@ -410,16 +450,10 @@ async function processCheckoutSessionCompletion(session: Stripe.Checkout.Session
     // Only try to update the job if it was created
     if (job?.$id) {
       try {
-        await databases.updateDocument(
-          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
-          job.$id,
-          {
-            job_status: 'failed',
-            error: 'Failed to start image processing',
-            updated_at: new Date().toISOString()
-          }
-        );
+        await updateJob(job.$id, {
+          job_status: 'failed',
+          error: 'Failed to start image processing',
+        });
       } catch (updateError) {
         log.error('Failed to update job status', {
           ...errorDetails,
@@ -428,7 +462,7 @@ async function processCheckoutSessionCompletion(session: Stripe.Checkout.Session
       }
     }
     
-    log.error('Failed to trigger style transfer function', {
+    log.error('Failed to process checkout session completion', {
       ...errorDetails,
       error: error instanceof Error ? error.message : 'Unknown error'
     });
@@ -439,6 +473,7 @@ async function processCheckoutSessionCompletion(session: Stripe.Checkout.Session
 }
 
 async function handleCheckoutSessionCompleted(event: Stripe.Event) {
+  log.info('handleCheckoutSessionCompleted called', { eventId: event.id });
   const session = event.data.object as Stripe.Checkout.Session;
   await processCheckoutSessionCompletion(session);
 }
@@ -452,7 +487,8 @@ const checkRequiredEnvVars = () => {
     'NEXT_PUBLIC_APPWRITE_PROJECT_ID',
     'APPWRITE_API_KEY',
     'NEXT_PUBLIC_APPWRITE_DATABASE_ID',
-    'NEXT_PUBLIC_APPWRITE_COLLECTION_ID'
+    'NEXT_PUBLIC_APPWRITE_COLLECTION_ID',
+    'RESEND_API_KEY'
   ];
 
   const missingVars = requiredVars.filter(varName => !process.env[varName]);

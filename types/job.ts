@@ -5,8 +5,8 @@ export type JobMetadata = {
   imageCount: number;
   customerEmail: string;
   paymentStatus: string;
-  image_urls?: string[];
-  generated_image_urls?: string[];
+  original_image_urls?: string[];
+  processed_images?: string[];
 };
 
 export type JobResponse = {
@@ -14,11 +14,12 @@ export type JobResponse = {
   status: JobStatus;
   progress: number;
   resultUrl: string | null;
-  imageUrls?: string[];
-  generatedImageUrls?: string[];
+  originalImageUrls?: string[];
+  processedImages?: string[];
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
   metadata: JobMetadata;
 };
 
