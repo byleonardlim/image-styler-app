@@ -29,10 +29,14 @@ function formatJobResponse(job: any): JobResponse {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  {
+    params,
+  }: {
+    params: Promise<{ id: string }>
+  }
 ) {
   try {
-    const { id: jobId } = params;
+    const { id: jobId } = await params;
 
     if (!jobId) {
       return NextResponse.json(

@@ -120,17 +120,15 @@ function SuccessContent() {
     throw new Error('No session ID found in URL');
   }
 
-  return (
-    <Suspense fallback={<LoadingView />}>
-      <JobRedirector sessionId={sessionId} />
-    </Suspense>
-  );
+  return <JobRedirector sessionId={sessionId} />;
 }
 
 export default function SuccessPage() {
   return (
     <ErrorBoundary fallback={({ error }) => <ErrorView error={error} />}>
-      <SuccessContent />
+      <Suspense fallback={<LoadingView />}>
+        <SuccessContent />
+      </Suspense>
     </ErrorBoundary>
   );
 }
