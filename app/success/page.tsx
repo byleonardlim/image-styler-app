@@ -116,6 +116,16 @@ function SuccessContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id');
 
+  useEffect(() => {
+    // Clear the checkout data from localStorage when the component mounts
+    try {
+      localStorage.removeItem('checkoutData');
+      console.log('Cleared checkout data from localStorage');
+    } catch (error) {
+      console.error('Failed to clear checkout data from localStorage:', error);
+    }
+  }, []);
+
   if (!sessionId) {
     throw new Error('No session ID found in URL');
   }

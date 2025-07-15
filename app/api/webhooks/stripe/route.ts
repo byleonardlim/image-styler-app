@@ -365,6 +365,9 @@ async function processCheckoutSessionCompletion(session: Stripe.Checkout.Session
   const userEmail = session.customer_details?.email || 'unknown@example.com';
   let job: Models.Document | null = null;
   
+  // Log the metadata for debugging
+  log.info('Checkout session metadata', { metadata, sessionId: session.id });
+  
   try {
     // Get file IDs from metadata
     let fileIds: string[] = [];
@@ -394,50 +397,58 @@ async function processCheckoutSessionCompletion(session: Stripe.Checkout.Session
     const existingJob = await findJobBySessionId(session.id);
 
     if (existingJob) {
-      log.info('Job already exists for session, checking status', { sessionId: session.id, jobId: existingJob.$id, status: existingJob.job_status });
-      // If job is not completed or failed, update it. Otherwise, do nothing.
+      log.info('Job already exists for session, checking status', { 
+        sessionId: session.id, 
+        jobId: existingJob.$id, 
+        status: existingJob.job_status 
+      });
+      
+      // If job is already in a non-terminal state, don't process it again
       if (existingJob.job_status !== 'completed' && existingJob.job_status !== 'failed') {
-        job = await updateJob(existingJob.$id, {
-          job_status: 'queuing',
-          image_urls: imageUrls,
-          selected_style_name: metadata.selectedStyle || 'default',
-          payment_status: session.payment_status || 'unknown',
-          updated_at: new Date().toISOString(),
-        });
-        log.info('Updated existing job', { jobId: job.$id, status: job.job_status });
-      } else {
-        log.info('Existing job is already completed or failed, skipping update', { sessionId: session.id, jobId: existingJob.$id, status: existingJob.job_status });
-        return; // Job is already in a final state, no need to process further
-      }
-    } else {
-      // Get the payment intent to check if payment was successful
-      const paymentIntent = await stripe.paymentIntents.retrieve(
-        session.payment_intent as string
-      );
-
-      if (paymentIntent.status !== 'succeeded') {
-        log.info('Payment not successful, skipping job creation', {
-          sessionId: session.id,
-          paymentStatus: paymentIntent.status
+        log.info('Job is already being processed, skipping duplicate processing', { 
+          jobId: existingJob.$id,
+          status: existingJob.job_status
         });
         return;
       }
-
-      // Create the job document with status 'pending' and all required fields
-      job = await createJob(session, imageUrls);
-      log.info('Created new job', { jobId: job.$id, status: job.job_status });
-
-      // Send job confirmation email
-      await sendJobConfirmationEmail(job as JobData);
+      
+      // If job is in a terminal state, update it but don't trigger processing
+      job = await updateJob(existingJob.$id, {
+        payment_status: session.payment_status || 'unknown',
+        updated_at: new Date().toISOString(),
+      });
+      log.info('Updated existing job in terminal state', { jobId: job.$id, status: job.job_status });
+      return;
     }
+
+    // Get the payment intent to check if payment was successful
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+      session.payment_intent as string
+    );
+
+    if (paymentIntent.status !== 'succeeded') {
+      log.info('Payment not successful, skipping job creation', {
+        sessionId: session.id,
+        paymentStatus: paymentIntent.status
+      });
+      return;
+    }
+
+    // Create the job document with status 'pending' and all required fields
+    job = await createJob(session, imageUrls);
+    log.info('Created new job', { jobId: job.$id, status: job.job_status });
+
+    // Send job confirmation email
+    await sendJobConfirmationEmail(job as JobData);
     
-    // Trigger the style transfer function if a job was created or updated and is in 'queuing' state
-    if (job && job.job_status === 'queuing') {
-      log.info('Triggering style transfer function', { jobId: job.$id });
-      const execution = await triggerStyleTransfer(job.$id, job.image_urls, job.selected_style_name);
-      await updateJob(job.$id, { function_execution_id: execution });
-      log.info('Style transfer function triggered', { jobId: job.$id, executionId: execution });
-    }
+    // Trigger the style transfer function
+    log.info('Triggering style transfer function', { jobId: job.$id });
+    const execution = await triggerStyleTransfer(job.$id, job.image_urls, job.selected_style_name);
+    await updateJob(job.$id, { 
+      function_execution_id: execution,
+      job_status: 'queuing' 
+    });
+    log.info('Style transfer function triggered', { jobId: job.$id, executionId: execution });
 
   } catch (error) {
     // Log error details
@@ -563,30 +574,31 @@ export const POST = async (req: Request) => {
           await handleCheckoutSessionCompleted(event);
           break;
 
-        case 'payment_intent.succeeded':
-          log.info('Handling payment_intent.succeeded event');
-          await handlePaymentIntentSucceeded(event);
-          break;
+        // Commenting out other event handlers to prevent duplicate processing
+        // case 'payment_intent.succeeded':
+        //   log.info('Handling payment_intent.succeeded event');
+        //   await handlePaymentIntentSucceeded(event);
+        //   break;
 
-        case 'payment_intent.payment_failed':
-          log.info('Handling payment_intent.payment_failed event');
-          await handlePaymentIntentFailed(event);
-          break;
+        // case 'payment_intent.payment_failed':
+        //   log.info('Handling payment_intent.payment_failed event');
+        //   await handlePaymentIntentFailed(event);
+        //   break;
 
-        case 'payment_intent.created':
-          log.info('Handling payment_intent.created event');
-          await handlePaymentIntentCreated(event);
-          break;
+        // case 'payment_intent.created':
+        //   log.info('Handling payment_intent.created event');
+        //   await handlePaymentIntentCreated(event);
+        //   break;
 
-        case 'charge.succeeded':
-          log.info('Handling charge.succeeded event');
-          await handleChargeSucceeded(event);
-          break;
+        // case 'charge.succeeded':
+        //   log.info('Handling charge.succeeded event');
+        //   await handleChargeSucceeded(event);
+        //   break;
 
-        case 'charge.updated':
-          log.info('Handling charge.updated event');
-          await handleChargeUpdated(event);
-          break;
+        // case 'charge.updated':
+        //   log.info('Handling charge.updated event');
+        //   await handleChargeUpdated(event);
+        //   break;
 
         default:
           log.warn('Unhandled event type', { eventType: event.type });
