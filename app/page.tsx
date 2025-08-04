@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageUploader from '@/components/ImageUploader';
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,23 @@ export default function Page() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null); // Keeping this as it might be used by other components
   const [totalPrice, setTotalPrice] = useState(0);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollPosition = window.scrollY;
+      setIsScrolled(scrollPosition > 10);
+    };
+
+    // Set initial state
+    handleScroll();
+    
+    // Add event listener
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    
+    // Cleanup
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleImagesChange = (newImages: File[], newPreviews: string[], newFileIds: string[]) => {
     setImages(newImages);
@@ -104,15 +121,34 @@ export default function Page() {
   };
 
   return (
-    <div className="container mx-auto py-8 space-y-12">
+    <React.Fragment>
+      {/* Floating Header */}
+      <div className="fixed top-0 left-0 right-0 z-50 flex justify-center">
+        <header 
+          className={`w-full max-w-7xl transition-all duration-300 ease-in-out ${
+            isScrolled 
+              ? 'bg-white/80 backdrop-blur-lg shadow-lg rounded-full mx-4 mt-2 border border-gray-200/50' 
+              : 'bg-transparent shadow-none border-transparent mx-4 mt-2'
+          }`}
+        >
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Styllio</h1>
+          <div className="flex items-center space-x-2">
+            <Button className="rounded-full">
+              Transform your image - from <span className="text-sm text-gray-500 line-through">$4</span> $2.50
+            </Button>
+          </div>
+        </div>
+        </header>
+      </div>
+
+      <div className={`pt-24 container mx-auto space-y-12 transition-all duration-300 ${
+        isScrolled ? 'mt-16' : 'mt-0'
+      }`}>
       {/* Hero Section */}
       <div className="text-center space-y-4 max-w-4xl mx-auto">
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Transform Your Photos with AI Magic</h1>
         <p className="text-xl text-muted-foreground">Turn your ordinary photos into stunning works of art with our AI-powered style transfer technology</p>
-        <div className="pt-4 flex justify-center gap-4">
-          <Button variant="outline" className="rounded-full">How It Works</Button>
-          <Button className="rounded-full">Order Now</Button>
-        </div>
       </div>
 
       {/* Order Form */}
@@ -132,7 +168,7 @@ export default function Page() {
               <Label className="block mb-2">Choose your preferred style</Label>
               <div className="grid grid-cols-3 gap-4">
                 {STYLES.map((styleItem) => {
-                  const isSelected = style === styleItem.id;
+                  const isSelected = style !== null && style === styleItem.id;
                   
                   return (
                     <button
@@ -211,5 +247,6 @@ export default function Page() {
         </div>
       </div>
     </div>
+    </React.Fragment>
   );
 }
