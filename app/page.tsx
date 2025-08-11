@@ -123,109 +123,105 @@ export default function Page() {
   return (
     <React.Fragment>
       {/* Floating Header */}
-      <div className="fixed top-0 left-0 right-0 z-50 flex justify-center">
-        <header 
-          className={`w-full max-w-7xl transition-all duration-300 ease-in-out ${
-            isScrolled 
-              ? 'bg-white/80 backdrop-blur-lg shadow-lg rounded-full mx-4 mt-2 border border-gray-200/50' 
-              : 'bg-transparent shadow-none border-transparent mx-4 mt-2'
-          }`}
-        >
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Styllio</h1>
+      <div className={`fixed top-0 left-0 right-0 z-50 p-4 transition-all duration-300 ${isScrolled ? 'bg-white/65 backdrop-blur-lg shadow-lg rounded-full border border-gray-200/50 mx-8 mt-8' : 'bg-transparent'}`}>
+        <div className="w-full flex items-center justify-between">
+          <h1 className="text-2xl font-bold px-8">Styllio</h1>
           <div className="flex items-center space-x-2">
             <Button className="rounded-full">
-              Transform your image - from <span className="text-sm text-gray-500 line-through">$4</span> $2.50
+              Stylize your image - from <span className="text-sm text-gray-500 line-through">$4</span> $3.00
             </Button>
           </div>
         </div>
-        </header>
       </div>
 
-      <div className={`pt-24 container mx-auto space-y-12 transition-all duration-300 ${
+      <div className={`pt-24 space-y-12 transition-all duration-300 ${
         isScrolled ? 'mt-16' : 'mt-0'
       }`}>
       {/* Hero Section */}
-      <div className="text-center space-y-4 max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Transform Your Photos with AI Magic</h1>
-        <p className="text-xl text-muted-foreground">Turn your ordinary photos into stunning works of art with our AI-powered style transfer technology</p>
-      </div>
+      <section className="w-full bg-white py-16">
+        <div className="text-center space-y-4 max-w-4xl mx-auto px-4 min-h-[50vh] flex flex-col justify-center">
+          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Turn Any Photo into Share‑Worthy Art in Seconds</h1>
+          <p className="text-xl text-muted-foreground">Upload your image and instantly restyle it into trending looks, just pick a style and go. No registration required!</p>
+        </div>
+      </section>
 
       {/* Order Form */}
-      <Card className="w-full max-w-2xl p-6 space-y-6 mx-auto">
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="space-y-4">
-            <ImageUploader
-              onImagesChange={handleImagesChange}
-              onError={setError}
-              isLoading={isLoading}
-              setIsLoading={setIsLoading}
-              style={style}
-              totalPrice={totalPrice}
-            />
+      <section className='w-full bg-gray-50 py-16'>
+        <div className="max-w-2xl mx-auto px-4">
+          <Card className="w-full p-6 space-y-6">
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div className="space-y-4">
+              <ImageUploader
+                onImagesChange={handleImagesChange}
+                onError={setError}
+                isLoading={isLoading}
+                setIsLoading={setIsLoading}
+                style={style}
+                totalPrice={totalPrice}
+              />
 
-            <div>
-              <Label className="block mb-2">Choose your preferred style</Label>
-              <div className="grid grid-cols-3 gap-4">
-                {STYLES.map((styleItem) => {
-                  const isSelected = style !== null && style === styleItem.id;
-                  
-                  return (
-                    <button
-                      key={styleItem.id}
-                      type="button"
-                      onClick={() => setStyle(styleItem.id)}
-                      className={`
-                        flex flex-col items-center p-3 rounded-lg border-2 transition-all
-                        ${isSelected 
-                          ? 'border-blue-500 bg-blue-50' 
-                          : 'border-gray-200 hover:border-gray-300 bg-white'}
-                        ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
-                      `}
-                      disabled={isLoading}
-                    >
-                      <div className="w-full aspect-square mb-2 overflow-hidden rounded-md">
-                        <img 
-                          src={styleItem.previewImage} 
-                          alt={`${styleItem.name} preview`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            // Fallback to a solid color if image fails to load
-                            const target = e.target as HTMLImageElement;
-                            target.onerror = null;
-                            target.src = `data:image/svg+xml,${encodeURIComponent(
-                              `<svg width="100" height="100" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                                <rect width="100" height="100" fill="%23${isSelected ? 'e0f2fe' : 'f3f4f6'}" />
-                                <text x="50%" y="50%" font-family="sans-serif" font-size="14" text-anchor="middle" dominant-baseline="middle" fill="%264a6b">
-                                  ${styleItem.name} Preview
-                                </text>
-                              </svg>`
-                            )}`;
-                          }}
-                        />
-                      </div>
-                      <span className="font-medium text-sm">{styleItem.name}</span>
-                    </button>
-                  );
-                })}
+              <div>
+                <Label className="block mb-2">Choose your preferred style</Label>
+                <div className="grid grid-cols-3 gap-4">
+                  {STYLES.map((styleItem) => {
+                    const isSelected = style !== null && style === styleItem.id;
+                    
+                    return (
+                      <button
+                        key={styleItem.id}
+                        type="button"
+                        onClick={() => setStyle(styleItem.id)}
+                        className={`
+                          flex flex-col items-center p-3 rounded-lg border-2 transition-all
+                          ${isSelected 
+                            ? 'border-blue-500 bg-blue-50' 
+                            : 'border-gray-200 hover:border-gray-300 bg-white'}
+                          ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
+                        `}
+                        disabled={isLoading}
+                      >
+                        <div className="w-full aspect-square mb-2 overflow-hidden rounded-md">
+                          <img 
+                            src={styleItem.previewImage} 
+                            alt={`${styleItem.name} preview`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // Fallback to a solid color if image fails to load
+                              const target = e.target as HTMLImageElement;
+                              target.onerror = null;
+                              target.src = `data:image/svg+xml,${encodeURIComponent(
+                                `<svg width="100" height="100" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                                  <rect width="100" height="100" fill="%23${isSelected ? 'e0f2fe' : 'f3f4f6'}" />
+                                  <text x="50%" y="50%" font-family="sans-serif" font-size="14" text-anchor="middle" dominant-baseline="middle" fill="%264a6b">
+                                    ${styleItem.name} Preview
+                                  </text>
+                                </svg>`
+                              )}`;
+                            }}
+                          />
+                        </div>
+                        <span className="font-medium text-sm">{styleItem.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+
+              <Button
+                type="submit"
+                disabled={isLoading || images.length === 0 || !style}
+                className="w-full"
+              >
+                Order (${totalPrice.toFixed(2)} USD)
+              </Button>
             </div>
-
-            <Button
-              type="submit"
-              disabled={isLoading || images.length === 0 || !style}
-              className="w-full"
-            >
-              Order (${totalPrice.toFixed(2)} USD)
-            </Button>
-          </div>
-        </form>
-      </Card>
-
-
+          </form>
+          </Card>
+        </div>
+      </section>
 
       {/* FAQ Section */}
-      <div className="max-w-3xl mx-auto space-y-6 pt-12">
+      <section className="max-w-3xl mx-auto space-y-6 pt-12">
         <h2 className="text-3xl font-bold text-center">Frequently Asked Questions</h2>
         <div className="space-y-4">
           <div className="border-b pb-4">
@@ -245,7 +241,7 @@ export default function Page() {
             <p className="text-muted-foreground mt-2">Yes, we offer a 100% satisfaction guarantee. If you're not happy with the results, contact us within 7 days for a full refund.</p>
           </div>
         </div>
-      </div>
+      </section>
     </div>
     </React.Fragment>
   );

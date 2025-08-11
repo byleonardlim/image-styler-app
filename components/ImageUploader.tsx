@@ -393,20 +393,20 @@ export default function ImageUploader({
             </span>
             <span>
               {state.previews.length <= 5 
-                ? `$${state.previews.length * 4}.00`
-                : `$${5 * 4 + (state.previews.length - 5) * 3}.00`}
+                ? `$${state.previews.length * 3}.00`
+                : `$${5 * 4 + (state.previews.length - 5) * 2}.00`}
             </span>
           </div>
         </div>
       )}
 
       <div className="text-xs text-muted-foreground text-center">
-        <p>First 5 photos: $4 each • Additional photos: $3 each</p>
+        <p>First 5 photos: $3 each • Additional photos: $2 each</p>
         {state.previews.length > 0 && (
           <p className="mt-1 text-green-600 dark:text-green-400">
             {state.previews.length <= 5 
-              ? `Total: $${state.previews.length * 4}.00`
-              : `Total: $${5 * 4 + (state.previews.length - 5) * 3}.00 (${state.previews.length - 5} extra photos)`}
+              ? `Total: $${state.previews.length * 3}.00`
+              : `Total: $${5 * 4 + (state.previews.length - 5) * 2}.00 (${state.previews.length - 5} extra photos)`}
           </p>
         )}
       </div>

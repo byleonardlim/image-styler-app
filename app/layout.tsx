@@ -1,12 +1,16 @@
 import './globals.css';
-import { Inter } from 'next/font/google';
+import { Mulish } from 'next/font/google';
 import { ToastProvider } from '@/components/ui/toast';
 
-const inter = Inter({ weight: '400', subsets: ['latin'] });
+const mulish = Mulish({ 
+  weight: ['400', '500', '600', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+});
 
 export const metadata = {
-  title: 'AI SDK - Next.js OpenAI Examples',
-  description: 'Examples of using the AI SDK with Next.js and OpenAI.',
+  title: 'Styllio - AI Powered Image Styling',
+  description: 'To be filled',
 };
 
 export default function RootLayout({
@@ -16,7 +20,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={mulish.className}>
         <ToastProvider>
           {children}
         </ToastProvider>
