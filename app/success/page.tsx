@@ -15,38 +15,77 @@ function JobRedirector({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobIdRetryCount, setJobIdRetryCount] = useState(0);
-  const { job, isLoading, error } = usePollJobStatus(jobId);
+  const [error, setError] = useState<string | null>(null);
+  const { job, isLoading: isJobLoading } = usePollJobStatus(jobId);
 
   useEffect(() => {
     if (!sessionId) return;
 
+    let isMounted = true;
+    let retryTimeout: NodeJS.Timeout;
+
     const fetchJobId = async () => {
       if (jobIdRetryCount >= MAX_JOB_ID_RETRIES) {
-        throw new Error('Failed to retrieve job ID after multiple attempts. Please try again later or contact support.');
+        const errorMsg = 'We\'re experiencing high demand. Your job is being processed, but it\'s taking longer than expected. You\'ll receive an email when it\'s ready.';
+        if (isMounted) {
+          setError(errorMsg);
+        }
+        console.error('Max retries reached for job ID lookup');
+        return;
       }
 
       try {
+        console.log(`[JobRedirector] Fetching job for session ID: ${sessionId} (attempt ${jobIdRetryCount + 1}/${MAX_JOB_ID_RETRIES})`);
         const response = await fetch(`/api/jobs?sessionId=${encodeURIComponent(sessionId)}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data?.id) {
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data?.id) {
+          console.log(`[JobRedirector] Found job ID: ${data.id} for session: ${sessionId}`);
+          if (isMounted) {
             setJobId(data.id);
-          } else {
-            // If job ID is not immediately available, retry fetching the session ID
-            setJobIdRetryCount(prev => prev + 1);
-            setTimeout(fetchJobId, JOB_ID_RETRY_DELAY); 
           }
+        } else if (data?.error) {
+          // Handle API error response
+          throw new Error(data.error);
         } else {
-          throw new Error('Failed to retrieve job ID from session.');
+          // No job found yet, retry after delay
+          console.log(`[JobRedirector] Job not found yet for session: ${sessionId}, retrying...`);
+          if (isMounted) {
+            setJobIdRetryCount(prev => prev + 1);
+            retryTimeout = setTimeout(fetchJobId, JOB_ID_RETRY_DELAY);
+          }
         }
       } catch (err) {
-        console.error('Error fetching job ID by session:', err);
-        setJobIdRetryCount(prev => prev + 1);
-        setTimeout(fetchJobId, JOB_ID_RETRY_DELAY); 
+        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+        console.error('[JobRedirector] Error fetching job ID:', errorMessage);
+        
+        if (isMounted) {
+          // Only update state if component is still mounted
+          setJobIdRetryCount(prev => prev + 1);
+          
+          // Don't show transient network errors to the user, just retry
+          if (jobIdRetryCount < MAX_JOB_ID_RETRIES - 1) {
+            retryTimeout = setTimeout(fetchJobId, JOB_ID_RETRY_DELAY);
+          } else {
+            setError('We\'re experiencing high demand. Your job is being processed, but it\'s taking longer than expected. You\'ll receive an email when it\'s ready.');
+          }
+        }
       }
     };
 
+    // Initial fetch
     fetchJobId();
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
   }, [sessionId, jobIdRetryCount]);
 
   useEffect(() => {
@@ -55,14 +94,37 @@ function JobRedirector({ sessionId }: { sessionId: string }) {
     }
   }, [job, router]);
 
+  // Show error message if we have one
   if (error) {
-    throw new Error(error); // Propagate error to ErrorBoundary
+    return (
+      <div className="text-center p-8">
+        <div className="text-yellow-500 mb-4">
+          <AlertCircle className="w-12 h-12 mx-auto" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-800 mb-2">Processing Your Order</h2>
+        <p className="text-gray-600 mb-6">{error}</p>
+        <p className="text-sm text-gray-500">You can safely close this page. We'll email you when your images are ready.</p>
+      </div>
+    );
   }
 
+  // Show loading state while we're looking up the job
+  if (!jobId || isJobLoading) {
+    return (
+      <div className="text-center p-8">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <h2 className="text-xl font-semibold text-gray-800 mb-2">Processing Your Order</h2>
+        <p className="text-gray-600">Preparing your job... {jobIdRetryCount > 0 && `(Attempt ${jobIdRetryCount}/${MAX_JOB_ID_RETRIES})`}</p>
+        <p className="text-sm text-gray-500 mt-4">This may take a moment. Please don't close this page.</p>
+      </div>
+    );
+  }
+
+  // This should be handled by the usePollJobStatus hook, but just in case
   return (
     <div className="text-center p-8">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-      <p className="text-gray-600">Preparing your job... {jobIdRetryCount > 0 && `(Attempt ${jobIdRetryCount}/${MAX_JOB_ID_RETRIES})`}</p>
+      <p className="text-gray-600">Redirecting to your job...</p>
     </div>
   );
 }

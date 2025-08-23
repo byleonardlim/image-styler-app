@@ -188,36 +188,7 @@ export default function ImageUploader({
     );
   }, [state.files, state.previews, state.fileIds, onImagesChange]);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const validImages = acceptedFiles.filter(file => 
-      Object.keys(ACCEPTED_FILE_TYPES).includes(file.type)
-    );
-
-    if (state.files.length + validImages.length > MAX_IMAGES) {
-      showToast(`Maximum ${MAX_IMAGES} images allowed`, { type: 'destructive' });
-      return;
-    }
-
-    if (validImages.length === 0) {
-      showToast('Please upload valid image files (JPEG, PNG, WebP)', { type: 'destructive' });
-      return;
-    }
-
-    handleNewImages(validImages);
-  }, [state.files.length, showToast]);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: ACCEPTED_FILE_TYPES,
-    maxFiles: MAX_IMAGES,
-    multiple: true,
-    maxSize: 5 * 1024 * 1024, // 5MB
-    onDropRejected: () => {
-      showToast('Some files were rejected. Only images up to 5MB are allowed.', { type: 'destructive' });
-    },
-  });
-
-  const handleNewImages = async (newImages: File[]) => {
+  const handleNewImages = useCallback(async (newImages: File[]) => {
     setIsLoading(true);
     onError(null);
 
@@ -284,9 +255,38 @@ export default function ImageUploader({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [state.files.length, onError, showToast, setIsLoading]);
 
-  const removeImage = async (index: number) => {
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    const validImages = acceptedFiles.filter(file => 
+      Object.keys(ACCEPTED_FILE_TYPES).includes(file.type)
+    );
+
+    if (state.files.length + validImages.length > MAX_IMAGES) {
+      showToast(`Maximum ${MAX_IMAGES} images allowed`, { type: 'destructive' });
+      return;
+    }
+
+    if (validImages.length === 0) {
+      showToast('Please upload valid image files (JPEG, PNG, WebP)', { type: 'destructive' });
+      return;
+    }
+
+    handleNewImages(validImages);
+  }, [state.files.length, showToast, handleNewImages]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: ACCEPTED_FILE_TYPES,
+    maxFiles: MAX_IMAGES,
+    multiple: true,
+    maxSize: 5 * 1024 * 1024, // 5MB
+    onDropRejected: () => {
+      showToast('Some files were rejected. Only images up to 5MB are allowed.', { type: 'destructive' });
+    },
+  });
+
+  const removeImage = useCallback(async (index: number) => {
     const fileIdToDelete = state.fileIds[index];
     const previewToDelete = state.previews[index];
     
@@ -315,7 +315,7 @@ export default function ImageUploader({
         payload: { fileId: fileIdToDelete, error: errorMessage },
       });
     }
-  };
+  }, [state.fileIds, state.previews, showToast]);
 
   return (
     <div className="space-y-4">

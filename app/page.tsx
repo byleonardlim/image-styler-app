@@ -128,7 +128,7 @@ export default function Page() {
           <h1 className="text-2xl font-bold px-8">Styllio</h1>
           <div className="flex items-center space-x-2">
             <Button className="rounded-full">
-              Stylize your image - from <span className="text-sm text-gray-500 line-through">$4</span> $3.00
+              Stylize your image - from <span className="text-sm text-gray-500 line-through">$4</span> $3
             </Button>
           </div>
         </div>
@@ -139,8 +139,8 @@ export default function Page() {
       }`}>
       {/* Hero Section */}
       <section className="w-full bg-white py-16">
-        <div className="text-center space-y-4 max-w-4xl mx-auto px-4 min-h-[50vh] flex flex-col justify-center">
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Turn Any Photo into Share‑Worthy Art in Seconds</h1>
+        <div className="space-y-4 max-w-4xl mx-auto px-4 min-h-[50vh] flex flex-col justify-center">
+          <h1 className="text-4xl tracking-tight sm:text-5xl font-plex-condensed">Turn Any Photo into Share‑Worthy Art in Seconds</h1>
           <p className="text-xl text-muted-foreground">Upload your image and instantly restyle it into trending looks, just pick a style and go. No registration required!</p>
         </div>
       </section>
@@ -221,7 +221,7 @@ export default function Page() {
       </section>
 
       {/* FAQ Section */}
-      <section className="max-w-3xl mx-auto space-y-6 pt-12">
+      <section className="max-w-3xl mx-auto space-y-6 pt-12 pb-12">
         <h2 className="text-3xl font-bold text-center">Frequently Asked Questions</h2>
         <div className="space-y-4">
           <div className="border-b pb-4">

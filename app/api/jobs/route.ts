@@ -38,29 +38,55 @@ export async function GET(request: Request) {
 
     if (sessionId) {
       // Handle session-based lookup
-      const result = await databases.listDocuments(
-        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
-        process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
-        [
-          Query.equal('stripe_session_id', sessionId),
-          Query.orderDesc('$createdAt'),
-          Query.limit(1)
-        ]
-      );
+      console.log(`[API/jobs] Looking up job by session ID: ${sessionId}`);
+      
+      try {
+        const result = await databases.listDocuments(
+          process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+          process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
+          [
+            Query.equal('stripe_session_id', sessionId),
+            Query.orderDesc('$createdAt'),
+            Query.limit(1)
+          ]
+        );
 
-      console.log(`[API/jobs] Session lookup result documents length: ${result.documents.length}`);
-
-      if (result.documents.length === 0) {
+        console.log(`[API/jobs] Session lookup result documents length: ${result.documents.length}`);
+        if (result.documents.length > 0) {
+          console.log(`[API/jobs] Found job:`, {
+            id: result.documents[0].$id,
+            status: result.documents[0].job_status,
+            sessionId: result.documents[0].stripe_session_id,
+            createdAt: result.documents[0].$createdAt
+          });
+          
+          // Return the found job
+          return NextResponse.json(formatJobResponse(result.documents[0]));
+        } else {
+          console.log(`[API/jobs] No job found with session ID: ${sessionId}`);
+          // Log all collections to help debug
+          try {
+            const collections = await databases.listCollections(process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!);
+            console.log(`[API/jobs] Available collections:`, collections.collections.map((c: any) => c.name));
+          } catch (err) {
+            console.error('[API/jobs] Error listing collections:', err);
+          }
+          
+          return NextResponse.json(
+            { error: 'No job found with the provided session ID' },
+            { status: 404 }
+          );
+        }
+      } catch (error) {
+        console.error('[API/jobs] Error looking up job by session ID:', error);
         return NextResponse.json(
-          { error: 'No job found with the provided session ID' },
-          { status: 404 }
+          { error: 'Error looking up job by session ID' },
+          { status: 500 }
         );
       }
 
-      // Return the most recent matching job
-      const job = result.documents[0];
-      console.log(`[API/jobs] Found job by session: ${job.$id}`);
-      return NextResponse.json(formatJobResponse(job));
+      // The code above already handles the session ID lookup and response
+      // This section is no longer needed as we've moved the response logic above
     } 
     
     if (jobId) {

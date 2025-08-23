@@ -1,11 +1,19 @@
 import './globals.css';
-import { Mulish } from 'next/font/google';
+import { Mulish, IBM_Plex_Sans_Condensed } from 'next/font/google';
 import { ToastProvider } from '@/components/ui/toast';
 
 const mulish = Mulish({ 
   weight: ['400', '500', '600', '700'],
   subsets: ['latin'],
   display: 'swap',
+  variable: '--font-mulish',
+});
+
+const ibmPlexCondensed = IBM_Plex_Sans_Condensed({
+  weight: ['400', '500', '600', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-ibm-plex-condensed',
 });
 
 export const metadata = {
@@ -19,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${mulish.variable} ${ibmPlexCondensed.variable}`}>
       <body className={mulish.className}>
         <ToastProvider>
           {children}
