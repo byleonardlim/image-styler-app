@@ -41,25 +41,27 @@ export const ImagePreview = memo(({
         className="w-full h-32 rounded-lg object-cover transition-opacity group-hover:opacity-90"
         onLoad={handleImageLoad}
       />
-      <Button
-        type="button"
-        variant={isUploading ? "outline" : "destructive"}
-        size="icon"
-        onClick={(e) => {
-          e.stopPropagation();
-          !isUploading && onRemove();
-        }}
-        disabled={isUploading || isDeleting}
-        className={`absolute top-2 right-2 h-8 w-8 p-0 transition-opacity ${
-          (isUploading || isDeleting) ? 'opacity-75' : 'opacity-0 group-hover:opacity-100'
-        }`}
-      >
-        {isUploading || isDeleting ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <X className="h-4 w-4" />
-        )}
-      </Button>
+      {!isUploading && (
+        <Button
+          type="button"
+          variant="destructive"
+          size="icon"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          disabled={isDeleting}
+          className={`absolute top-2 right-2 h-8 w-8 p-0 transition-opacity ${
+            isDeleting ? 'opacity-75' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        >
+          {isDeleting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <X className="h-4 w-4" />
+          )}
+        </Button>
+      )}
     </div>
   );
 });

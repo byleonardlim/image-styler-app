@@ -1,10 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import ImageUploader from '@/components/ImageUploader';
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 
 export default function Page() {
@@ -13,17 +12,17 @@ export default function Page() {
     { 
       id: 'lunora', 
       name: 'Lunora',
-      previewImage: '/previews/lunora-preview.jpg' // TODO: Update path to actual image
+      previewImage: '/images/previews/lunora-preview.png' // TODO: Update path to actual image
     },
     { 
       id: 'suburbia', 
       name: 'Suburbia',
-      previewImage: '/previews/suburbia-preview.jpg' // TODO: Update path to actual image
+      previewImage: '/images/previews/suburbia-preview.png' // TODO: Update path to actual image
     },
     { 
       id: 'magicelle', 
       name: 'Magicelle',
-      previewImage: '/previews/magicelle-preview.jpg' // TODO: Update path to actual image
+      previewImage: '/images/previews/magicelle-preview.png' // TODO: Update path to actual image
     },
     // Add new styles here
   ] as const;
@@ -140,27 +139,26 @@ export default function Page() {
       {/* Hero Section */}
       <section className="w-full bg-white py-16">
         <div className="space-y-4 max-w-4xl mx-auto px-4 min-h-[50vh] flex flex-col justify-center">
-          <h1 className="text-4xl tracking-tight sm:text-5xl font-plex-condensed">Turn Any Photo into Share‑Worthy Art in Seconds</h1>
+          <h1 className="text-4xl sm:text-5xl font-plex-condensed">Turn Any Photo into Share‑Worthy Art in Seconds</h1>
           <p className="text-xl text-muted-foreground">Upload your image and instantly restyle it into trending looks, just pick a style and go. No registration required!</p>
         </div>
       </section>
 
       {/* Order Form */}
-      <section className='w-full bg-gray-50 py-16'>
-        <div className="max-w-2xl mx-auto px-4">
-          <Card className="w-full p-6 space-y-6">
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-4">
-              <ImageUploader
-                onImagesChange={handleImagesChange}
-                onError={setError}
-                isLoading={isLoading}
-                setIsLoading={setIsLoading}
-                style={style}
-                totalPrice={totalPrice}
-              />
-
-              <div>
+      <section className='w-full bg-gray-50 py-24'>
+        <div className="max-w-2xl mx-auto">
+          <Card className="w-full py-6">
+            <CardContent>
+              <form className="space-y-4" onSubmit={handleSubmit}>
+              <div className="space-y-4">
+                <ImageUploader
+                  onImagesChange={handleImagesChange}
+                  onError={setError}
+                  isLoading={isLoading}
+                  setIsLoading={setIsLoading}
+                  style={style}
+                  totalPrice={totalPrice}
+                />
                 <Label className="block mb-2">Choose your preferred style</Label>
                 <div className="grid grid-cols-3 gap-4">
                   {STYLES.map((styleItem) => {
@@ -171,11 +169,11 @@ export default function Page() {
                         key={styleItem.id}
                         type="button"
                         onClick={() => setStyle(styleItem.id)}
-                        className={`
-                          flex flex-col items-center p-3 rounded-lg border-2 transition-all
+                        className={`p-1
+                          flex flex-col items-center rounded-lg border-2 transition-all
                           ${isSelected 
-                            ? 'border-blue-500 bg-blue-50' 
-                            : 'border-gray-200 hover:border-gray-300 bg-white'}
+                            ? 'border- bg-blue-50' 
+                            : 'border-gray-100 hover:border-gray-200 bg-white'}
                           ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
                         `}
                         disabled={isLoading}
@@ -184,7 +182,7 @@ export default function Page() {
                           <img 
                             src={styleItem.previewImage} 
                             alt={`${styleItem.name} preview`}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover object-left-top"
                             onError={(e) => {
                               // Fallback to a solid color if image fails to load
                               const target = e.target as HTMLImageElement;
@@ -205,17 +203,17 @@ export default function Page() {
                     );
                   })}
                 </div>
-              </div>
 
-              <Button
-                type="submit"
-                disabled={isLoading || images.length === 0 || !style}
-                className="w-full"
-              >
-                Order (${totalPrice.toFixed(2)} USD)
-              </Button>
-            </div>
-          </form>
+                <Button
+                  type="submit"
+                  disabled={isLoading || images.length === 0 || !style}
+                  className="w-full"
+                >
+                  Order (${totalPrice.toFixed(2)} USD)
+                </Button>
+              </div>
+            </form>
+            </CardContent>
           </Card>
         </div>
       </section>

@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useReducer } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, Loader2 } from 'lucide-react';
-import { Button } from "@/components/ui/button";
 import { useToast } from '@/components/ui/toast';
 import { ImageState, ImageUploaderProps, ImageAction } from '@/types/image';
 import { uploadImage, deleteImage } from '@/lib/api/imageService';
@@ -353,7 +352,7 @@ export default function ImageUploader({
                 <span className="font-semibold text-blue-600 dark:text-blue-400">Click to upload</span> or drag and drop
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                PNG, JPG, WEBP (MAX. {MAX_IMAGES} images, 5MB each)
+                PNG, JPG, WEBP (Max. {MAX_IMAGES} images, 5MB each)
               </p>
             </div>
           )}
