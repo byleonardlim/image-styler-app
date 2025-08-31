@@ -5,6 +5,7 @@ import ImageUploader from '@/components/ImageUploader';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { FloatingHeader } from "@/components/FloatingHeader";
 
 export default function Page() {
   // Style configuration
@@ -12,17 +13,17 @@ export default function Page() {
     { 
       id: 'lunora', 
       name: 'Lunora',
-      previewImage: '/images/previews/lunora-preview.png' // TODO: Update path to actual image
+      previewImage: '/images/previews/lunora-preview.png'
     },
     { 
       id: 'suburbia', 
       name: 'Suburbia',
-      previewImage: '/images/previews/suburbia-preview.png' // TODO: Update path to actual image
+      previewImage: '/images/previews/suburbia-preview.png'
     },
     { 
       id: 'magicelle', 
       name: 'Magicelle',
-      previewImage: '/images/previews/magicelle-preview.png' // TODO: Update path to actual image
+      previewImage: '/images/previews/magicelle-preview.png'
     },
     // Add new styles here
   ] as const;
@@ -121,31 +122,27 @@ export default function Page() {
 
   return (
     <React.Fragment>
-      {/* Floating Header */}
-      <div className={`fixed top-0 left-0 right-0 z-50 p-4 transition-all duration-300 ${isScrolled ? 'bg-white/65 backdrop-blur-lg shadow-lg rounded-full border border-gray-200/50 mx-8 mt-8' : 'bg-transparent'}`}>
-        <div className="w-full flex items-center justify-between">
-          <h1 className="text-2xl font-bold px-8">Styllio</h1>
-          <div className="flex items-center space-x-2">
-            <Button className="rounded-full">
-              Stylize your image - from <span className="text-sm text-gray-500 line-through">$4</span> $3
-            </Button>
-          </div>
-        </div>
-      </div>
+      <FloatingHeader 
+        isScrolled={isScrolled} 
+        onStylizeClick={() => {
+          // Scroll to the form section
+          document.getElementById('order-form')?.scrollIntoView({ behavior: 'smooth' });
+        }} 
+      />
 
       <div className={`pt-24 space-y-12 transition-all duration-300 ${
         isScrolled ? 'mt-16' : 'mt-0'
       }`}>
       {/* Hero Section */}
-      <section className="w-full bg-white py-16">
-        <div className="space-y-4 max-w-4xl mx-auto px-4 min-h-[50vh] flex flex-col justify-center">
-          <h1 className="text-4xl sm:text-5xl font-plex-condensed">Turn Any Photo into Share‑Worthy Art in Seconds</h1>
-          <p className="text-xl text-muted-foreground">Upload your image and instantly restyle it into trending looks, just pick a style and go. No registration required!</p>
+      <section className="w-full bg-background py-16">
+        <div className="space-y-4 max-w-4xl mx-auto px-4 min-h-[40vh] flex flex-col justify-center text-center">
+          <h1 className="text-6xl sm:text-5xl font-medium font-plex-condensed text-foreground">Turning any photos into share-worthy images</h1>
+          <p className="text-xl text-muted-foreground">No registration and data retention to generate high quality trending looks.</p>
         </div>
       </section>
 
       {/* Order Form */}
-      <section className='w-full bg-gray-50 py-24'>
+      <section className='w-full bg-muted/20 py-24'>
         <div className="max-w-2xl mx-auto">
           <Card className="w-full py-6">
             <CardContent>
@@ -172,31 +169,27 @@ export default function Page() {
                         className={`p-1
                           flex flex-col items-center rounded-lg border-2 transition-all
                           ${isSelected 
-                            ? 'border- bg-blue-50' 
-                            : 'border-gray-100 hover:border-gray-200 bg-white'}
+                            ? 'border-primary bg-primary/10' 
+                            : 'border-muted hover:border-border bg-card'}
                           ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
                         `}
                         disabled={isLoading}
                       >
                         <div className="w-full aspect-square mb-2 overflow-hidden rounded-md">
-                          <img 
-                            src={styleItem.previewImage} 
-                            alt={`${styleItem.name} preview`}
-                            className="w-full h-full object-cover object-left-top"
-                            onError={(e) => {
-                              // Fallback to a solid color if image fails to load
-                              const target = e.target as HTMLImageElement;
-                              target.onerror = null;
-                              target.src = `data:image/svg+xml,${encodeURIComponent(
-                                `<svg width="100" height="100" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                                  <rect width="100" height="100" fill="%23${isSelected ? 'e0f2fe' : 'f3f4f6'}" />
-                                  <text x="50%" y="50%" font-family="sans-serif" font-size="14" text-anchor="middle" dominant-baseline="middle" fill="%264a6b">
-                                    ${styleItem.name} Preview
-                                  </text>
-                                </svg>`
-                              )}`;
-                            }}
-                          />
+                          <div className={`w-full h-full ${isSelected ? 'bg-blue-50' : 'bg-slate-50'} flex items-center justify-center`}>
+                            {styleItem.previewImage && (
+                              <img 
+                                src={styleItem.previewImage} 
+                                alt={`${styleItem.name} preview`}
+                                className="w-full h-full object-cover object-left-top"
+                                onError={(e) => {
+                                  // Hide the image if it fails to load
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                }}
+                              />
+                            )}
+                          </div>
                         </div>
                         <span className="font-medium text-sm">{styleItem.name}</span>
                       </button>
@@ -209,7 +202,7 @@ export default function Page() {
                   disabled={isLoading || images.length === 0 || !style}
                   className="w-full"
                 >
-                  Order (${totalPrice.toFixed(2)} USD)
+                  Order Images - ${totalPrice.toFixed(2)}
                 </Button>
               </div>
             </form>
@@ -220,7 +213,7 @@ export default function Page() {
 
       {/* FAQ Section */}
       <section className="max-w-3xl mx-auto space-y-6 pt-12 pb-12">
-        <h2 className="text-3xl font-bold text-center">Frequently Asked Questions</h2>
+        <h2 className="text-3xl font-medium text-center font-plex-condensed">Frequently Asked Questions</h2>
         <div className="space-y-4">
           <div className="border-b pb-4">
             <h3 className="text-lg font-medium">How does the AI style transfer work?</h3>
@@ -240,7 +233,7 @@ export default function Page() {
           </div>
         </div>
       </section>
-    </div>
+      </div>
     </React.Fragment>
   );
 }

@@ -4,10 +4,6 @@ const appwriteEndpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!;
 const appwriteProjectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID!;
 export const appwriteBucketId = process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID!;
 
-if (!appwriteEndpoint || !appwriteProjectId) {
-  throw new Error('Missing Appwrite environment variables (NEXT_PUBLIC_APPWRITE_ENDPOINT or NEXT_PUBLIC_APPWRITE_PROJECT_ID)');
-}
-
 export { ID };
 
 export function getFilePreviewUrl(bucketId: string, fileId: string, width?: number, height?: number): string {

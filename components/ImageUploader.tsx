@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/toast';
 import { ImageState, ImageUploaderProps, ImageAction } from '@/types/image';
 import { uploadImage, deleteImage } from '@/lib/api/imageService';
 import { ImagePreview } from './ImagePreview';
+import { IMAGE_PRICING } from '@/config/pricing';
 
 const MAX_IMAGES = 10;
 const ACCEPTED_FILE_TYPES = {
@@ -391,21 +392,30 @@ export default function ImageUploader({
               {state.previews.length} of {MAX_IMAGES} images selected
             </span>
             <span>
-              {state.previews.length <= 5 
-                ? `$${state.previews.length * 3}.00`
-                : `$${5 * 4 + (state.previews.length - 5) * 2}.00`}
+              {state.previews.length > 0 && `$${(
+                state.previews.length <= IMAGE_PRICING.BULK_THRESHOLD 
+                  ? state.previews.length * IMAGE_PRICING.STANDARD_PRICE
+                  : IMAGE_PRICING.BULK_THRESHOLD * IMAGE_PRICING.STANDARD_PRICE + 
+                    (state.previews.length - IMAGE_PRICING.BULK_THRESHOLD) * IMAGE_PRICING.BULK_PRICE
+              ).toFixed(2)}`}
             </span>
           </div>
         </div>
       )}
 
       <div className="text-xs text-muted-foreground text-center">
-        <p>First 5 photos: $3 each • Additional photos: $2 each</p>
+        <p>
+          First {IMAGE_PRICING.BULK_THRESHOLD} photos: ${IMAGE_PRICING.STANDARD_PRICE.toFixed(2)} each • 
+          Additional photos: $${IMAGE_PRICING.BULK_PRICE.toFixed(2)} each
+        </p>
         {state.previews.length > 0 && (
           <p className="mt-1 text-green-600 dark:text-green-400">
-            {state.previews.length <= 5 
-              ? `Total: $${state.previews.length * 3}.00`
-              : `Total: $${5 * 4 + (state.previews.length - 5) * 2}.00 (${state.previews.length - 5} extra photos)`}
+            {state.previews.length <= IMAGE_PRICING.BULK_THRESHOLD 
+              ? `Total: $${(state.previews.length * IMAGE_PRICING.STANDARD_PRICE).toFixed(2)}`
+              : `Total: $${(
+                  IMAGE_PRICING.BULK_THRESHOLD * IMAGE_PRICING.STANDARD_PRICE + 
+                  (state.previews.length - IMAGE_PRICING.BULK_THRESHOLD) * IMAGE_PRICING.BULK_PRICE
+                ).toFixed(2)} (${state.previews.length - IMAGE_PRICING.BULK_THRESHOLD} extra photos)`}
           </p>
         )}
       </div>
