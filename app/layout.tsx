@@ -17,7 +17,7 @@ const ibmPlexCondensed = IBM_Plex_Sans_Condensed({
 });
 
 export const metadata = {
-  title: 'Styllio - AI Powered Image Styling',
+  title: 'Styllio - Privacy first AI image styling',
   description: 'To be filled',
 };
 
@@ -28,7 +28,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${mulish.variable} ${ibmPlexCondensed.variable}`}>
-      <body className={mulish.className}>
+      <body className={`${mulish.className} sm:px-6`}>
         <ToastProvider>
           {children}
         </ToastProvider>

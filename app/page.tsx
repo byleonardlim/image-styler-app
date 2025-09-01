@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { FloatingHeader } from "@/components/FloatingHeader";
+import FAQSection from "@/components/FAQSection";
 
 export default function Page() {
   // Style configuration
@@ -142,9 +143,9 @@ export default function Page() {
       </section>
 
       {/* Order Form */}
-      <section className='w-full bg-muted/20 py-24'>
+      <section id="order-form" className='w-full bg-muted/20 py-24'>
         <div className="max-w-2xl mx-auto">
-          <Card className="w-full py-6">
+          <Card className="w-full pt-6">
             <CardContent>
               <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-4">
@@ -212,27 +213,7 @@ export default function Page() {
       </section>
 
       {/* FAQ Section */}
-      <section className="max-w-3xl mx-auto space-y-6 pt-12 pb-12">
-        <h2 className="text-3xl font-medium text-center font-plex-condensed">Frequently Asked Questions</h2>
-        <div className="space-y-4">
-          <div className="border-b pb-4">
-            <h3 className="text-lg font-medium">How does the AI style transfer work?</h3>
-            <p className="text-muted-foreground mt-2">Our AI analyzes the content of your photo and applies the selected artistic style while preserving the original composition and details.</p>
-          </div>
-          <div className="border-b pb-4">
-            <h3 className="text-lg font-medium">What image formats do you accept?</h3>
-            <p className="text-muted-foreground mt-2">We accept JPG, PNG, and WebP formats. Maximum file size is 10MB per image.</p>
-          </div>
-          <div className="border-b pb-4">
-            <h3 className="text-lg font-medium">How long does processing take?</h3>
-            <p className="text-muted-foreground mt-2">Processing typically takes 2-5 minutes per image, depending on server load and image complexity.</p>
-          </div>
-          <div>
-            <h3 className="text-lg font-medium">Can I request a refund?</h3>
-            <p className="text-muted-foreground mt-2">Yes, we offer a 100% satisfaction guarantee. If you're not happy with the results, contact us within 7 days for a full refund.</p>
-          </div>
-        </div>
-      </section>
+      <FAQSection />
       </div>
     </React.Fragment>
   );

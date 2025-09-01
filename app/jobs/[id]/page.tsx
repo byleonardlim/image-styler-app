@@ -144,38 +144,7 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                       loading="lazy"
                     />
                   </div>
-                  <div className="p-3 bg-gray-50">
-                    <Button
-                      onClick={async (e) => {
-                        e.preventDefault();
-                        try {
-                          const response = await fetch(url);
-                          if (!response.ok) throw new Error('Failed to fetch image');
-                          
-                          const blob = await response.blob();
-                          const blobUrl = window.URL.createObjectURL(blob);
-                          
-                          const link = document.createElement('a');
-                          link.href = blobUrl;
-                          link.download = `styled-image-${index + 1}.jpg`;
-                          document.body.appendChild(link);
-                          link.click();
-                          
-                          window.URL.revokeObjectURL(blobUrl);
-                          document.body.removeChild(link);
-                        } catch (error) {
-                          console.error('Error downloading image:', error);
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.download = `styled-image-${index + 1}.jpg`;
-                          link.click();
-                        }
-                      }}
-                      className="w-full flex items-center justify-center"
-                    >
-                      <Download className="h-5 w-5 mr-2" />
-                      {hasMultipleImages ? `Download Image ${index + 1}` : 'Download Image'}
-                    </Button>
+                  <div className="p-3 bg-gray-50 flex space-x-4">
                   </div>
                 </div>
                 ))}
@@ -199,13 +168,47 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
 
         {/* Footer */}
         <div className="p-6 border-t border-gray-200 bg-gray-50">
-          <div className="flex justify-center space-x-4">
+          <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Button
               onClick={handleBackToHome}
               variant="outline"
+              className="flex-1"
             >
-              Return Home
+              Back to Home
             </Button>
+            {generatedImageUrls.length > 0 && (
+              <Button
+                onClick={async (e) => {
+                  e.preventDefault();
+                  try {
+                    const response = await fetch(generatedImageUrls[0]);
+                    if (!response.ok) throw new Error('Failed to fetch image');
+                    
+                    const blob = await response.blob();
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = `styled-image.jpg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    
+                    window.URL.revokeObjectURL(blobUrl);
+                    document.body.removeChild(link);
+                  } catch (error) {
+                    console.error('Error downloading image:', error);
+                    const link = document.createElement('a');
+                    link.href = generatedImageUrls[0];
+                    link.download = `styled-image.jpg`;
+                    link.click();
+                  }
+                }}
+                className="flex-1 flex items-center justify-center"
+              >
+                <Download className="h-5 w-5 mr-2" />
+                {hasMultipleImages ? 'Download All Images' : 'Download Image'}
+              </Button>
+            )}
           </div>
         </div>
       </div>

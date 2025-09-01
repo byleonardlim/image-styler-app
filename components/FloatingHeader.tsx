@@ -9,8 +9,8 @@ interface FloatingHeaderProps {
 export function FloatingHeader({ isScrolled, onStylizeClick }: FloatingHeaderProps) {
   return (
     <div 
-      className={`fixed top-0 left-0 right-0 z-50 p-2 transition-all duration-300 ${
-        isScrolled ? 'bg-background/75 backdrop-blur-lg shadow-lg rounded-sm border border-border/50 mx-8 mt-8' : 'bg-transparent'
+      className={`fixed top-0 left-0 right-0 z-50 p-8 transition-all duration-300 ${
+        isScrolled ? 'bg-background/75 backdrop-blur-lg shadow-xl rounded-sm border border-border/50 mx-6 mt-6 px-3 py-2' : 'bg-transparent'
       }`}
     >
       <div className="w-full flex items-center justify-between">
