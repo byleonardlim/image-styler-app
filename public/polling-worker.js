@@ -1,4 +1,4 @@
-
+ 
 // public/polling-worker.js
 
 let pollInterval;

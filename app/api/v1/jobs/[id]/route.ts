@@ -32,7 +32,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const jobId = params.id;
+    const { id: jobId } = params;
 
     if (!jobId) {
       return NextResponse.json(

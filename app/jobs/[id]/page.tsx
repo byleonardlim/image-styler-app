@@ -40,7 +40,7 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
               ></div>
             </div>
           )}
-          <p className="text-sm text-gray-500">Please keep this page open while we process your images.</p>
+          <p className="text-sm text-gray-500">Feel free to leave the page and come back later to check on the progress.</p>
         </div>
       </div>
     );
@@ -98,22 +98,22 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
           <div className="flex items-center">
             <div className={`p-3 rounded-full ${isJobCompleted ? 'bg-green-100' : 'bg-blue-100'}`}>
               {isJobCompleted ? (
-                <Check className="h-8 w-8 text-green-600" />
+                <Check className="h-6 w-6 text-green-600" />
               ) : (
-                <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+                <Loader2 className="h-6 w-6 text-blue-600 animate-spin" />
               )}
             </div>
             <div className="ml-4">
               <h1 className="text-2xl font-bold text-gray-800">
-                {isJobCompleted ? 'Processing Complete!' : 'Processing Your Images'}
+                {isJobCompleted ? 'Your image is ready' : 'Styling your image'}
               </h1>
               <p className="text-gray-600">
-                {job.metadata?.style && `Style: ${job.metadata.style} • `}
+                {job.metadata?.style && `Selected style: ${job.metadata.style.charAt(0).toUpperCase() + job.metadata.style.slice(1)} • `}
                 {isJobCompleted 
                   ? hasMultipleImages 
                     ? `${generatedImageUrls.length} images generated` 
-                    : 'Your image is ready'
-                  : 'Generating your styled images...'}
+                    : 'Completed'
+                  : 'Generating...'}
               </p>
             </div>
           </div>
@@ -136,15 +136,15 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
               <div className={`grid ${hasMultipleImages ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-4`}>
                 {generatedImageUrls.map((url: string, index: number) => (
                 <div key={index} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                  <div className="relative aspect-square bg-gray-100">
+                  <div className="relative aspect-auto bg-gray-100">
                     <img 
                       src={url} 
                       alt={`Generated image ${index + 1}`} 
-                      className="w-full h-full object-contain"
+                      className="w-full h-auto object-contain"
                       loading="lazy"
                     />
                   </div>
-                  <div className="p-3 bg-gray-50 flex space-x-4">
+                  <div className="bg-gray-50 flex space-x-4">
                   </div>
                 </div>
                 ))}
@@ -180,28 +180,29 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
               <Button
                 onClick={async (e) => {
                   e.preventDefault();
+                  const link = document.createElement('a');
+                  
                   try {
+                    // First try to download via fetch to handle CORS if needed
                     const response = await fetch(generatedImageUrls[0]);
                     if (!response.ok) throw new Error('Failed to fetch image');
                     
                     const blob = await response.blob();
                     const blobUrl = window.URL.createObjectURL(blob);
-                    
-                    const link = document.createElement('a');
                     link.href = blobUrl;
-                    link.download = `styled-image.jpg`;
-                    document.body.appendChild(link);
-                    link.click();
-                    
-                    window.URL.revokeObjectURL(blobUrl);
-                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(blobUrl); // Clean up after setting href
                   } catch (error) {
-                    console.error('Error downloading image:', error);
-                    const link = document.createElement('a');
-                    link.href = generatedImageUrls[0];
-                    link.download = `styled-image.jpg`;
-                    link.click();
+                    console.warn('Falling back to direct download due to:', error);
+                    link.href = generatedImageUrls[0]; // Fallback to direct URL
                   }
+                  
+                  // Set up and trigger download
+                  const now = new Date();
+                  const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-');
+                  link.download = `styllio-${timestamp}.jpg`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
                 }}
                 className="flex-1 flex items-center justify-center"
               >
