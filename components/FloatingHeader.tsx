@@ -1,16 +1,81 @@
+"use client";
 import { Button } from "./ui/button";
-import React from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import gsap from "gsap";
+import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 
 interface FloatingHeaderProps {
-  isScrolled: boolean;
-  onStylizeClick: () => void;
+  isScrolled?: boolean;
+  onStylizeClick?: () => void;
 }
 
 export function FloatingHeader({ isScrolled, onStylizeClick }: FloatingHeaderProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [localScrolled, setLocalScrolled] = useState(false);
+  const effectiveScrolled = typeof isScrolled === 'boolean' ? isScrolled : localScrolled;
+
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.from(containerRef.current, {
+        y: -16,
+        opacity: 0,
+        duration: 0.4,
+        ease: "power2.out",
+      });
+    });
+    return () => ctx.revert();
+  }, []);
+
+  useEffect(() => {
+    if (typeof isScrolled === 'boolean') return; // parent controls it
+    const handler = () => {
+      const y = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      setLocalScrolled(y > 10);
+    };
+    handler();
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => window.removeEventListener('scroll', handler);
+  }, [isScrolled]);
+
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    const ctx = gsap.context(() => {
+      if (effectiveScrolled) {
+        gsap.fromTo(
+          containerRef.current,
+          { y: -6 },
+          { y: 0, duration: 0.2, ease: "power2.out" }
+        );
+      } else {
+        gsap.fromTo(
+          containerRef.current,
+          { y: 0 },
+          { y: 0, duration: 0.15, ease: "power2.out" }
+        );
+      }
+    });
+    return () => ctx.revert();
+  }, [effectiveScrolled]);
+
+  useEffect(() => {
+    gsap.registerPlugin(ScrollToPlugin);
+  }, []);
+
+  const handleStylize = () => {
+    if (onStylizeClick) return onStylizeClick();
+    gsap.to(window, {
+      duration: 0.8,
+      ease: 'power2.out',
+      scrollTo: { y: '#order-form', offsetY: 80 }
+    });
+  };
+
   return (
     <div 
+      ref={containerRef}
       className={`fixed top-0 left-0 right-0 z-50 p-8 transition-all duration-300 ${
-        isScrolled ? 'bg-background/75 backdrop-blur-lg shadow-xl rounded-sm border border-border/50 mx-6 mt-6 px-3 py-2' : 'bg-transparent'
+        effectiveScrolled ? 'bg-background/75 backdrop-blur-lg shadow-xl rounded-sm border border-border/50 mx-6 mt-6 px-3 py-2' : 'bg-transparent'
       }`}
     >
       <div className="w-full flex items-center justify-between">
@@ -18,7 +83,7 @@ export function FloatingHeader({ isScrolled, onStylizeClick }: FloatingHeaderPro
         <div className="flex items-center space-x-2">
           <Button 
             className="rounded-sm"
-            onClick={onStylizeClick}
+            onClick={handleStylize}
           >
             Stylize your image - from{' '}
             <span className="text-sm">$2.50</span>

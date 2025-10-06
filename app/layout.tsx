@@ -1,6 +1,7 @@
 import './globals.css';
 import { Mulish, IBM_Plex_Sans_Condensed } from 'next/font/google';
 import { ToastProvider } from '@/components/ui/toast';
+import PageTransition from '@/components/PageTransition';
 
 const mulish = Mulish({ 
   weight: ['400', '500', '600', '700'],
@@ -30,7 +31,9 @@ export default function RootLayout({
     <html lang="en" className={`${mulish.variable} ${ibmPlexCondensed.variable}`}>
       <body className={`${mulish.className} sm:px-6`}>
         <ToastProvider>
-          {children}
+          <PageTransition>
+            {children}
+          </PageTransition>
         </ToastProvider>
       </body>
     </html>

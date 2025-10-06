@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useLayoutEffect, useCallback, useRef } from 'react';
 import ImageUploader from '@/components/ImageUploader';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { FloatingHeader } from "@/components/FloatingHeader";
 import FAQSection from "@/components/FAQSection";
+import gsap from 'gsap';
+import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 export default function Page() {
   // Style configuration
@@ -38,21 +41,61 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null); // Keeping this as it might be used by other components
   const [totalPrice, setTotalPrice] = useState(0);
   const [isScrolled, setIsScrolled] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    gsap.registerPlugin(ScrollToPlugin, ScrollTrigger);
     const handleScroll = () => {
-      const scrollPosition = window.scrollY;
+      const scrollPosition = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
       setIsScrolled(scrollPosition > 10);
     };
 
-    // Set initial state
+    // Set initial state before first paint
     handleScroll();
-    
+
     // Add event listener
     window.addEventListener('scroll', handleScroll, { passive: true });
-    
+
     // Cleanup
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useLayoutEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.from('.hero-animate > *', {
+        y: 24,
+        opacity: 0,
+        duration: 0.6,
+        stagger: 0.08,
+        ease: 'power2.out'
+      });
+
+      gsap.from('#order-form .card-reveal', {
+        y: 24,
+        opacity: 0,
+        duration: 0.6,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: '#order-form',
+          start: 'top 80%',
+          toggleActions: 'play none none reverse'
+        }
+      });
+
+      gsap.from('#faq .faq-reveal', {
+        y: 24,
+        opacity: 0,
+        duration: 0.6,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: '#faq',
+          start: 'top 85%',
+          toggleActions: 'play none none reverse'
+        }
+      });
+    }, rootRef);
+
+    return () => ctx.revert();
   }, []);
 
   const handleImagesChange = (newImages: File[], newPreviews: string[], newFileIds: string[]) => {
@@ -126,17 +169,20 @@ export default function Page() {
       <FloatingHeader 
         isScrolled={isScrolled} 
         onStylizeClick={() => {
-          // Scroll to the form section
-          document.getElementById('order-form')?.scrollIntoView({ behavior: 'smooth' });
+          gsap.to(window, {
+            duration: 0.8,
+            ease: 'power2.out',
+            scrollTo: { y: '#order-form', offsetY: 80 }
+          });
         }} 
       />
 
-      <div className={`pt-24 space-y-12 transition-all duration-300 ${
+      <div ref={rootRef} className={`pt-24 space-y-12 transition-all duration-300 ${
         isScrolled ? 'mt-16' : 'mt-0'
       }`}>
       {/* Hero Section */}
       <section className="w-full bg-background py-16">
-        <div className="space-y-4 max-w-4xl mx-auto px-4 min-h-[40vh] flex flex-col justify-center text-center">
+        <div className="hero-animate space-y-4 max-w-4xl mx-auto px-4 min-h-[40vh] flex flex-col justify-center text-center">
           <h1 className="text-6xl sm:text-5xl font-medium font-plex-condensed text-foreground">Turning any photos into share-worthy images</h1>
           <p className="text-xl text-muted-foreground">No registration and data retention to generate high quality trending looks.</p>
         </div>
@@ -146,7 +192,7 @@ export default function Page() {
       <section id="order-form" className='w-full bg-muted/20 py-24'>
         <div className="max-w-2xl mx-auto">
           <Card className="w-full pt-6">
-            <CardContent>
+            <CardContent className="card-reveal">
               <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-4">
                 <ImageUploader
@@ -213,7 +259,11 @@ export default function Page() {
       </section>
 
       {/* FAQ Section */}
-      <FAQSection />
+      <div id="faq">
+        <div className="faq-reveal">
+          <FAQSection />
+        </div>
+      </div>
       </div>
     </React.Fragment>
   );

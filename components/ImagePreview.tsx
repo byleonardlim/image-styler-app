@@ -1,7 +1,9 @@
-import React, { memo, useState, useEffect } from 'react';
+"use client";
+import React, { memo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { ImagePreviewProps } from '@/types/image';
+import gsap from 'gsap';
 
 export const ImagePreview = memo(({ 
   src, 
@@ -9,6 +11,7 @@ export const ImagePreview = memo(({
   isUploading, 
   isDeleting 
 }: ImagePreviewProps) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [isBlobUrl, setIsBlobUrl] = useState<boolean>(src.startsWith('blob:'));
 
   // Update isBlobUrl when src changes
@@ -33,8 +36,21 @@ export const ImagePreview = memo(({
     };
   }, [isBlobUrl, src]);
 
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.from(containerRef.current, {
+        y: 12,
+        opacity: 0,
+        duration: 0.35,
+        ease: 'power2.out',
+      });
+    });
+    return () => ctx.revert();
+  }, []);
+
   return (
-    <div className="relative group">
+    <div ref={containerRef} className="relative group">
       <img
         src={src}
         alt="Preview"
