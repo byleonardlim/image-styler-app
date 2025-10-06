@@ -12,8 +12,8 @@ type FAQItem = {
 const faqData: FAQItem[] = [
   {
     id: 'how-it-works',
-    question: 'How Styliio works?',
-    answer: 'Styliio uses AI to analyze the content of your photo and apply the selected artistic style while preserving the original composition and details.'
+    question: 'How Styllio works?',
+    answer: 'Styllio uses AI to analyze the content of your photo and apply the selected artistic style while preserving the original composition and details.'
   },
   {
     id: 'image-formats',

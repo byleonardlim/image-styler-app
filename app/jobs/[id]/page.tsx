@@ -23,6 +23,62 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
   const hasMultipleImages = generatedImageUrls.length > 1;
   const isJobCompleted = job?.status === 'completed';
 
+  function CanvasPreview({ src, alt }: { src: string; alt: string }) {
+    const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+    const containerRef = React.useRef<HTMLDivElement | null>(null);
+    const imgRef = React.useRef<HTMLImageElement | null>(null);
+
+    const draw = React.useCallback(() => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      const img = imgRef.current;
+      if (!canvas || !container || !img || !img.naturalWidth || !img.naturalHeight) return;
+      const dpr = window.devicePixelRatio || 1;
+      const maxW = container.clientWidth || img.naturalWidth;
+      const aspect = img.naturalWidth / img.naturalHeight;
+      const width = Math.max(1, Math.round(maxW));
+      const height = Math.max(1, Math.round(width / aspect));
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+    }, []);
+
+    React.useEffect(() => {
+      const image = new Image();
+      imgRef.current = image;
+      image.crossOrigin = 'anonymous';
+      image.decoding = 'async';
+      image.loading = 'eager';
+      image.onload = () => draw();
+      image.src = src;
+      const onResize = () => draw();
+      window.addEventListener('resize', onResize);
+      return () => {
+        window.removeEventListener('resize', onResize);
+      };
+    }, [src, draw]);
+
+    return (
+      <div
+        ref={containerRef}
+        onContextMenu={(e) => e.preventDefault()}
+        onDragStart={(e) => e.preventDefault()}
+        className="w-full"
+        style={{ WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
+        aria-label={alt}
+        role="img"
+      >
+        <canvas ref={canvasRef} className="block w-full" />
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -137,12 +193,7 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                 {generatedImageUrls.map((url: string, index: number) => (
                 <div key={index} className="border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                   <div className="relative aspect-auto bg-gray-100">
-                    <img 
-                      src={url} 
-                      alt={`Generated image ${index + 1}`} 
-                      className="w-full h-auto object-contain"
-                      loading="lazy"
-                    />
+                    <CanvasPreview src={url} alt={`Generated image ${index + 1}`} />
                   </div>
                   <div className="bg-gray-50 flex space-x-4">
                   </div>
@@ -180,29 +231,71 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
               <Button
                 onClick={async (e) => {
                   e.preventDefault();
-                  const link = document.createElement('a');
-                  
-                  try {
-                    // First try to download via fetch to handle CORS if needed
-                    const response = await fetch(generatedImageUrls[0]);
-                    if (!response.ok) throw new Error('Failed to fetch image');
-                    
-                    const blob = await response.blob();
-                    const blobUrl = window.URL.createObjectURL(blob);
-                    link.href = blobUrl;
-                    window.URL.revokeObjectURL(blobUrl); // Clean up after setting href
-                  } catch (error) {
-                    console.warn('Falling back to direct download due to:', error);
-                    link.href = generatedImageUrls[0]; // Fallback to direct URL
-                  }
-                  
-                  // Set up and trigger download
+
+                  const getExtensionFromMime = (mime: string) => {
+                    if (!mime) return 'jpg';
+                    if (mime.includes('jpeg')) return 'jpg';
+                    if (mime.includes('png')) return 'png';
+                    if (mime.includes('webp')) return 'webp';
+                    if (mime.includes('gif')) return 'gif';
+                    if (mime.includes('bmp')) return 'bmp';
+                    if (mime.includes('tiff')) return 'tiff';
+                    return 'jpg';
+                  };
+
+                  const getExtensionFromUrl = (url: string) => {
+                    try {
+                      const pathname = new URL(url).pathname.toLowerCase();
+                      const match = pathname.match(/\.([a-z0-9]+)$/);
+                      return match ? match[1] : 'jpg';
+                    } catch {
+                      return 'jpg';
+                    }
+                  };
+
+                  const triggerDownload = (href: string, filename: string, revokeAfter?: string) => {
+                    const link = document.createElement('a');
+                    link.href = href;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    if (revokeAfter) {
+                      // Revoke the object URL shortly after the click to avoid breaking the download
+                      setTimeout(() => URL.revokeObjectURL(revokeAfter), 1500);
+                    }
+                  };
+
                   const now = new Date();
                   const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-');
-                  link.download = `styllio-${timestamp}.jpg`;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
+
+                  const downloadSingle = async (url: string, index?: number) => {
+                    try {
+                      const response = await fetch(url);
+                      if (!response.ok) throw new Error('Failed to fetch image');
+                      const blob = await response.blob();
+                      const ext = getExtensionFromMime(blob.type);
+                      const blobUrl = URL.createObjectURL(blob);
+                      const filename = `styllio-${timestamp}${typeof index === 'number' ? `-${index + 1}` : ''}.${ext}`;
+                      triggerDownload(blobUrl, filename, blobUrl);
+                    } catch (error) {
+                      console.warn('Falling back to direct download due to:', error);
+                      const ext = getExtensionFromUrl(url);
+                      const filename = `styllio-${timestamp}${typeof index === 'number' ? `-${index + 1}` : ''}.${ext}`;
+                      triggerDownload(url, filename);
+                    }
+                  };
+
+                  if (generatedImageUrls.length > 1) {
+                    // Download each image separately when multiple are available
+                    for (let i = 0; i < generatedImageUrls.length; i++) {
+                      await downloadSingle(generatedImageUrls[i], i);
+                      // Small delay to avoid overwhelming the browser download manager
+                      await new Promise((r) => setTimeout(r, 200));
+                    }
+                  } else {
+                    await downloadSingle(generatedImageUrls[0]);
+                  }
                 }}
                 className="flex-1 flex items-center justify-center"
               >
