@@ -10,6 +10,7 @@ import FAQSection from "@/components/FAQSection";
 import gsap from 'gsap';
 import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 
 export default function Page() {
   // Style configuration
@@ -185,6 +186,14 @@ export default function Page() {
         <div className="hero-animate space-y-4 max-w-4xl mx-auto px-4 min-h-[40vh] flex flex-col justify-center text-center">
           <h1 className="text-6xl sm:text-5xl font-medium font-plex-condensed text-foreground">Turning any photos into share-worthy images</h1>
           <p className="text-xl text-muted-foreground">No registration and data retention to generate high quality trending looks.</p>
+          <div className="pt-4">
+            <BeforeAfterSlider
+              className="mx-auto"
+              beforeSrc="https://picsum.photos/id/1025/1600/900"
+              afterSrc="https://picsum.photos/id/1025/1600/900"
+              alt="Example style transformation"
+            />
+          </div>
         </div>
       </section>
 
