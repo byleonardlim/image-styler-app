@@ -98,8 +98,8 @@ export default function BeforeAfterSlider({
         }}
       >
         <img
-          src={beforeSrc}
-          alt={alt + " before"}
+          src={afterSrc}
+          alt={alt + " after"}
           className="absolute inset-0 h-full w-full object-cover pointer-events-none"
           draggable={false}
         />
@@ -112,8 +112,8 @@ export default function BeforeAfterSlider({
           }}
         >
           <img
-            src={afterSrc}
-            alt={alt + " after"}
+            src={beforeSrc}
+            alt={alt + " before"}
             className="absolute inset-0 h-full w-full object-cover pointer-events-none"
             draggable={false}
           />

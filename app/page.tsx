@@ -11,6 +11,7 @@ import gsap from 'gsap';
 import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
+import { IMAGE_PRICING } from '@/config/pricing';
 
 export default function Page() {
   // Style configuration
@@ -105,9 +106,11 @@ export default function Page() {
     setFileIds(newFileIds);
     
     // Recalculate price
-    const basePrice = Math.min(newImages.length, 5) * 4;
-    const additionalPrice = Math.max(newImages.length - 5, 0) * 3;
-    setTotalPrice(basePrice + additionalPrice);
+    const count = newImages.length;
+    const baseCount = Math.min(count, IMAGE_PRICING.BULK_THRESHOLD);
+    const extraCount = Math.max(count - IMAGE_PRICING.BULK_THRESHOLD, 0);
+    const total = baseCount * IMAGE_PRICING.STANDARD_PRICE + extraCount * IMAGE_PRICING.BULK_PRICE;
+    setTotalPrice(total);
   };
 
 
@@ -189,8 +192,8 @@ export default function Page() {
           <div className="pt-4">
             <BeforeAfterSlider
               className="mx-auto"
-              beforeSrc="https://picsum.photos/id/1025/1600/900"
-              afterSrc="https://picsum.photos/id/1025/1600/900"
+              beforeSrc="/images/beforeafter/before_generated.png"
+              afterSrc="/images/beforeafter/after_generated.png"
               alt="Example style transformation"
             />
           </div>
