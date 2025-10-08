@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { databases } from '@/lib/appwriteServer';
 import { JobResponse, JobStatus } from '@/types/job';
 
@@ -28,11 +28,12 @@ function formatJobResponse(job: any): JobResponse {
 
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  { params }: { params?: Record<string, string | string[]> }
 ) {
   try {
-    const { id: jobId } = params;
+    const rawId = params?.id;
+    const jobId = Array.isArray(rawId) ? rawId[0] : rawId;
 
     if (!jobId) {
       return NextResponse.json(
