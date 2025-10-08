@@ -1,8 +1,6 @@
 "use client";
 import { Button } from "./ui/button";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import gsap from "gsap";
-import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 
 interface FloatingHeaderProps {
   isScrolled?: boolean;
@@ -13,18 +11,27 @@ export function FloatingHeader({ isScrolled, onStylizeClick }: FloatingHeaderPro
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [localScrolled, setLocalScrolled] = useState(false);
   const effectiveScrolled = typeof isScrolled === 'boolean' ? isScrolled : localScrolled;
+  const gsapRef = useRef<any>(null);
 
   useLayoutEffect(() => {
-    if (!containerRef.current) return;
-    const ctx = gsap.context(() => {
-      gsap.from(containerRef.current, {
-        y: -16,
-        opacity: 0,
-        duration: 0.4,
-        ease: "power2.out",
+    let ctx: any;
+    (async () => {
+      if (!containerRef.current) return;
+      if (!gsapRef.current) {
+        const mod = await import("gsap");
+        gsapRef.current = mod.default || mod;
+      }
+      const gsap = gsapRef.current;
+      ctx = gsap.context(() => {
+        gsap.from(containerRef.current!, {
+          y: -16,
+          opacity: 0,
+          duration: 0.4,
+          ease: "power2.out",
+        });
       });
-    });
-    return () => ctx.revert();
+    })();
+    return () => ctx?.revert?.();
   }, []);
 
   useEffect(() => {
@@ -39,36 +46,61 @@ export function FloatingHeader({ isScrolled, onStylizeClick }: FloatingHeaderPro
   }, [isScrolled]);
 
   useLayoutEffect(() => {
-    if (!containerRef.current) return;
-    const ctx = gsap.context(() => {
-      if (effectiveScrolled) {
-        gsap.fromTo(
-          containerRef.current,
-          { y: -6 },
-          { y: 0, duration: 0.2, ease: "power2.out" }
-        );
-      } else {
-        gsap.fromTo(
-          containerRef.current,
-          { y: 0 },
-          { y: 0, duration: 0.15, ease: "power2.out" }
-        );
+    let ctx: any;
+    (async () => {
+      if (!containerRef.current) return;
+      if (!gsapRef.current) {
+        const mod = await import("gsap");
+        gsapRef.current = mod.default || mod;
       }
-    });
-    return () => ctx.revert();
+      const gsap = gsapRef.current;
+      ctx = gsap.context(() => {
+        if (effectiveScrolled) {
+          gsap.fromTo(
+            containerRef.current!,
+            { y: -6 },
+            { y: 0, duration: 0.2, ease: "power2.out" }
+          );
+        } else {
+          gsap.fromTo(
+            containerRef.current!,
+            { y: 0 },
+            { y: 0, duration: 0.15, ease: "power2.out" }
+          );
+        }
+      });
+    })();
+    return () => ctx?.revert?.();
   }, [effectiveScrolled]);
 
   useEffect(() => {
-    gsap.registerPlugin(ScrollToPlugin);
+    (async () => {
+      if (!gsapRef.current) {
+        const mod = await import("gsap");
+        gsapRef.current = mod.default || mod;
+      }
+      const gsap = gsapRef.current;
+      const { ScrollToPlugin } = await import("gsap/ScrollToPlugin");
+      gsap.registerPlugin(ScrollToPlugin);
+    })();
   }, []);
 
   const handleStylize = () => {
     if (onStylizeClick) return onStylizeClick();
-    gsap.to(window, {
-      duration: 0.8,
-      ease: 'power2.out',
-      scrollTo: { y: '#order-form', offsetY: 80 }
-    });
+    (async () => {
+      if (!gsapRef.current) {
+        const mod = await import("gsap");
+        gsapRef.current = mod.default || mod;
+      }
+      const gsap = gsapRef.current;
+      const { ScrollToPlugin } = await import("gsap/ScrollToPlugin");
+      gsap.registerPlugin(ScrollToPlugin);
+      gsap.to(window, {
+        duration: 0.8,
+        ease: 'power2.out',
+        scrollTo: { y: '#order-form', offsetY: 80 }
+      });
+    })();
   };
 
   return (

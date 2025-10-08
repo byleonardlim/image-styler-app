@@ -7,9 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { FloatingHeader } from "@/components/FloatingHeader";
 import FAQSection from "@/components/FAQSection";
-import gsap from 'gsap';
-import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
+// gsap will be dynamically imported in effects to avoid SSR issues
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 import { IMAGE_PRICING } from '@/config/pricing';
 
@@ -46,7 +44,6 @@ export default function Page() {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
-    gsap.registerPlugin(ScrollToPlugin, ScrollTrigger);
     const handleScroll = () => {
       const scrollPosition = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
       setIsScrolled(scrollPosition > 10);
@@ -63,41 +60,49 @@ export default function Page() {
   }, []);
 
   useLayoutEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from('.hero-animate > *', {
-        y: 24,
-        opacity: 0,
-        duration: 0.6,
-        stagger: 0.08,
-        ease: 'power2.out'
-      });
+    let ctx: any;
+    (async () => {
+      const mod = await import('gsap');
+      const gsap = mod.default || mod;
+      const { ScrollTrigger } = await import('gsap/ScrollTrigger');
+      gsap.registerPlugin(ScrollTrigger);
 
-      gsap.from('#order-form .card-reveal', {
-        y: 24,
-        opacity: 0,
-        duration: 0.6,
-        ease: 'power2.out',
-        scrollTrigger: {
-          trigger: '#order-form',
-          start: 'top 80%',
-          toggleActions: 'play none none reverse'
-        }
-      });
+      ctx = gsap.context(() => {
+        gsap.from('.hero-animate > *', {
+          y: 24,
+          opacity: 0,
+          duration: 0.6,
+          stagger: 0.08,
+          ease: 'power2.out'
+        });
 
-      gsap.from('#faq .faq-reveal', {
-        y: 24,
-        opacity: 0,
-        duration: 0.6,
-        ease: 'power2.out',
-        scrollTrigger: {
-          trigger: '#faq',
-          start: 'top 85%',
-          toggleActions: 'play none none reverse'
-        }
-      });
-    }, rootRef);
+        gsap.from('#order-form .card-reveal', {
+          y: 24,
+          opacity: 0,
+          duration: 0.6,
+          ease: 'power2.out',
+          scrollTrigger: {
+            trigger: '#order-form',
+            start: 'top 80%',
+            toggleActions: 'play none none reverse'
+          }
+        });
 
-    return () => ctx.revert();
+        gsap.from('#faq .faq-reveal', {
+          y: 24,
+          opacity: 0,
+          duration: 0.6,
+          ease: 'power2.out',
+          scrollTrigger: {
+            trigger: '#faq',
+            start: 'top 85%',
+            toggleActions: 'play none none reverse'
+          }
+        });
+      }, rootRef);
+    })();
+
+    return () => ctx?.revert?.();
   }, []);
 
   const handleImagesChange = (newImages: File[], newPreviews: string[], newFileIds: string[]) => {
@@ -172,7 +177,11 @@ export default function Page() {
     <React.Fragment>
       <FloatingHeader 
         isScrolled={isScrolled} 
-        onStylizeClick={() => {
+        onStylizeClick={async () => {
+          const mod = await import('gsap');
+          const gsap = mod.default || mod;
+          const { ScrollToPlugin } = await import('gsap/ScrollToPlugin');
+          gsap.registerPlugin(ScrollToPlugin);
           gsap.to(window, {
             duration: 0.8,
             ease: 'power2.out',
