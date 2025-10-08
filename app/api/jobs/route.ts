@@ -3,6 +3,9 @@ import { databases } from '@/lib/appwriteServer';
 import { Query } from 'node-appwrite';
 import { JobResponse, JobStatus } from '@/types/job';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 function formatJobResponse(job: any): JobResponse {
   // Ensure image URLs are always arrays
   const imageUrls = Array.isArray(job.image_urls) ? job.image_urls : [];
