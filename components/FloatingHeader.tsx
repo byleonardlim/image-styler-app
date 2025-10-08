@@ -23,9 +23,16 @@ export function FloatingHeader({ isScrolled, onStylizeClick }: FloatingHeaderPro
       }
       const gsap = gsapRef.current;
       ctx = gsap.context(() => {
-        gsap.from(containerRef.current!, {
-          y: -16,
-          opacity: 0,
+        const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (prefersReduced) {
+          gsap.set(containerRef.current!, { y: 0, opacity: 1 });
+          return;
+        }
+        // Ensure initial state is applied before animating to avoid flashes or stuck opacity
+        gsap.set(containerRef.current!, { y: -16, opacity: 0 });
+        gsap.to(containerRef.current!, {
+          y: 0,
+          opacity: 1,
           duration: 0.4,
           ease: "power2.out",
         });
@@ -107,7 +114,7 @@ export function FloatingHeader({ isScrolled, onStylizeClick }: FloatingHeaderPro
     <div 
       ref={containerRef}
       className={`fixed top-0 left-0 right-0 z-50 p-8 transition-all duration-300 ${
-        effectiveScrolled ? 'bg-background/75 backdrop-blur-lg shadow-xl rounded-sm border border-border/50 mx-6 mt-6 px-3 py-2' : 'bg-transparent'
+        effectiveScrolled ? 'bg-background/75 backdrop-blur-lg shadow-xl rounded-sm border border-border/50 mx-2 mt-2 lg:mx-6 lg:mt-6 px-3 py-2' : 'bg-transparent'
       }`}
     >
       <div className="w-full flex items-center justify-between">

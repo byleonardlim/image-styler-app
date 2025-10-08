@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useReducer } from 'react';
+import React, { useCallback, useEffect, useReducer, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
@@ -32,6 +32,11 @@ function imageReducer(state: ImageState, action: ImageAction): ImageState {
         ...state,
         files: [...state.files, ...action.payload.files],
         previews: [...state.previews, ...action.payload.previews],
+        // Extend fileIds with placeholders to preserve index alignment for upcoming uploads
+        fileIds: [
+          ...state.fileIds,
+          ...new Array(action.payload.files.length).fill('')
+        ],
       };
 
     case 'UPLOAD_START':
@@ -47,14 +52,17 @@ function imageReducer(state: ImageState, action: ImageAction): ImageState {
 
     case 'UPLOAD_SUCCESS':
       const { [action.payload.index]: _removed, ...remainingProgressSuccess } = state.uploadProgress;
+      // Place fileId at the exact index to keep arrays aligned with previews
+      const updatedFileIdsOnSuccess = [...state.fileIds];
+      updatedFileIdsOnSuccess[action.payload.index] = action.payload.fileId;
       return {
         ...state,
-        fileIds: [...state.fileIds, action.payload.fileId],
+        fileIds: updatedFileIdsOnSuccess,
         urlMapping: {
           ...state.urlMapping,
           [action.payload.fileId]: action.payload.fileUrl,
         },
-        previews: state.previews.map((preview, idx) => 
+        previews: state.previews.map((preview, idx) =>
           idx === action.payload.index ? action.payload.fileUrl : preview
         ),
         uploadProgress: remainingProgressSuccess,
@@ -63,14 +71,17 @@ function imageReducer(state: ImageState, action: ImageAction): ImageState {
     case 'UPLOAD_ERROR':
       const newFiles = [...state.files];
       const newPreviews = [...state.previews];
+      const newFileIdsOnError = [...state.fileIds];
       newFiles.splice(action.payload.index, 1);
       newPreviews.splice(action.payload.index, 1);
+      newFileIdsOnError.splice(action.payload.index, 1);
       const { [action.payload.index]: _removedError, ...remainingProgressError } = state.uploadProgress;
 
       return {
         ...state,
         files: newFiles,
         previews: newPreviews,
+        fileIds: newFileIdsOnError,
         uploadProgress: remainingProgressError,
       };
 
@@ -189,7 +200,6 @@ export default function ImageUploader({
   }, [state.files, state.previews, state.fileIds, onImagesChange]);
 
   const handleNewImages = useCallback(async (newImages: File[]) => {
-    setIsLoading(true);
     onError(null);
 
     try {
@@ -253,26 +263,34 @@ export default function ImageUploader({
       showToast(errorMessage, { type: 'destructive' });
       onError(errorMessage);
     } finally {
-      setIsLoading(false);
+      // parent loading handled via effect syncing isAnyUploading
     }
-  }, [state.files.length, onError, showToast, setIsLoading]);
+  }, [state.files.length, onError, showToast]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const validImages = acceptedFiles.filter(file => 
       Object.keys(ACCEPTED_FILE_TYPES).includes(file.type)
     );
 
-    if (state.files.length + validImages.length > MAX_IMAGES) {
-      showToast(`Maximum ${MAX_IMAGES} images allowed`, { type: 'destructive' });
-      return;
-    }
-
     if (validImages.length === 0) {
       showToast('Please upload valid image files (JPEG, PNG, WebP)', { type: 'destructive' });
       return;
     }
 
-    handleNewImages(validImages);
+    const availableSlots = Math.max(0, MAX_IMAGES - state.files.length);
+    const toUpload = validImages.slice(0, availableSlots);
+    const excess = validImages.length - toUpload.length;
+
+    if (toUpload.length === 0) {
+      showToast(`Maximum ${MAX_IMAGES} images allowed`, { type: 'destructive' });
+      return;
+    }
+
+    if (excess > 0) {
+      showToast(`Only ${toUpload.length} added. Limit of ${MAX_IMAGES} images reached.`, { type: 'destructive' });
+    }
+
+    handleNewImages(toUpload);
   }, [state.files.length, showToast, handleNewImages]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -282,15 +300,22 @@ export default function ImageUploader({
     multiple: true,
     maxSize: 5 * 1024 * 1024, // 5MB
     onDropRejected: () => {
-      showToast('Some files were rejected. Only images up to 5MB are allowed.', { type: 'destructive' });
+      showToast('Some files were rejected. Only images up to 10MB are allowed.', { type: 'destructive' });
     },
   });
 
   const removeImage = useCallback(async (index: number) => {
     const fileIdToDelete = state.fileIds[index];
     const previewToDelete = state.previews[index];
-    
-    if (!fileIdToDelete) return;
+
+    // If this image hasn't uploaded yet (no fileId), remove locally
+    if (!fileIdToDelete) {
+      if (previewToDelete && previewToDelete.startsWith('blob:')) {
+        try { URL.revokeObjectURL(previewToDelete); } catch {}
+      }
+      dispatch({ type: 'REMOVE_IMAGE', payload: { index } });
+      return;
+    }
 
     dispatch({
       type: 'DELETE_START',
@@ -317,6 +342,27 @@ export default function ImageUploader({
     }
   }, [state.fileIds, state.previews, showToast]);
 
+  // Derived state: any image uploading
+  const isAnyUploading = Object.keys(state.uploadProgress).length > 0;
+  const [showUploading, setShowUploading] = useState(false);
+  const uploadingCount = Object.values(state.uploadProgress).filter(Boolean).length;
+  // Sync parent loading with any uploading state
+  useEffect(() => {
+    setIsLoading(isAnyUploading);
+  }, [isAnyUploading, setIsLoading]);
+
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    if (isAnyUploading) {
+      t = setTimeout(() => setShowUploading(true), 150);
+    } else {
+      setShowUploading(false);
+    }
+    return () => {
+      if (t) clearTimeout(t);
+    };
+  }, [isAnyUploading]);
+
   return (
     <div className="space-y-4">
       <div 
@@ -332,15 +378,10 @@ export default function ImageUploader({
           {...getInputProps()} 
           id="dropzone-file" 
           aria-label="File upload"
-          disabled={isLoading}
+          disabled={false}
         />
         <div className="flex flex-col items-center justify-center p-6 text-center">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center space-y-2">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-              <p className="text-sm text-gray-600 dark:text-gray-400">Processing images...</p>
-            </div>
-          ) : isDragActive ? (
+          {isDragActive ? (
             <div className="flex flex-col items-center space-y-2">
               <Upload className="h-10 w-10 text-blue-500" />
               <p className="text-blue-600 dark:text-blue-400 font-medium">Drop the images here</p>
@@ -353,8 +394,14 @@ export default function ImageUploader({
                 <span className="font-semibold text-blue-600 dark:text-blue-400">Click to upload</span> or drag and drop
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                PNG, JPG, WEBP (Max. {MAX_IMAGES} images, 5MB each)
+                PNG, JPG, WEBP (Max. {MAX_IMAGES} images, up to 10MB each)
               </p>
+              {showUploading && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                  <span>{`Uploading ${uploadingCount} image${uploadingCount === 1 ? '' : 's'}...`}</span>
+                </div>
+              )}
             </div>
           )}
         </div>

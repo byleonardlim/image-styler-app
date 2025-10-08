@@ -68,17 +68,21 @@ export default function Page() {
       gsap.registerPlugin(ScrollTrigger);
 
       ctx = gsap.context(() => {
-        gsap.from('.hero-animate > *', {
-          y: 24,
-          opacity: 0,
+        // Set initial states before paint to avoid flicker
+        gsap.set('.hero-animate > *', { y: 24, opacity: 0 });
+        gsap.to('.hero-animate > *', {
+          y: 0,
+          opacity: 1,
           duration: 0.6,
           stagger: 0.08,
           ease: 'power2.out'
         });
 
-        gsap.from('#order-form .card-reveal', {
-          y: 24,
-          opacity: 0,
+        // Order form reveal
+        gsap.set('#order-form .card-reveal', { y: 24, opacity: 0 });
+        gsap.to('#order-form .card-reveal', {
+          y: 0,
+          opacity: 1,
           duration: 0.6,
           ease: 'power2.out',
           scrollTrigger: {
@@ -88,9 +92,11 @@ export default function Page() {
           }
         });
 
-        gsap.from('#faq .faq-reveal', {
-          y: 24,
-          opacity: 0,
+        // FAQ reveal
+        gsap.set('#faq .faq-reveal', { y: 24, opacity: 0 });
+        gsap.to('#faq .faq-reveal', {
+          y: 0,
+          opacity: 1,
           duration: 0.6,
           ease: 'power2.out',
           scrollTrigger: {
@@ -210,10 +216,10 @@ export default function Page() {
       </section>
 
       {/* Order Form */}
-      <section id="order-form" className='w-full bg-muted/20 py-24'>
-        <div className="max-w-2xl mx-auto">
-          <Card className="w-full pt-6">
-            <CardContent className="card-reveal">
+      <section id="order-form" className='w-full bg-muted/20 py-16'>
+        <div className="max-w-2xl mx-auto px-4">
+          <Card className="w-full">
+            <CardContent className="card-reveal p-4 lg:p-6">
               <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-4">
                 <ImageUploader
@@ -281,7 +287,7 @@ export default function Page() {
 
       {/* FAQ Section */}
       <div id="faq">
-        <div className="faq-reveal">
+        <div className="faq-reveal p-6">
           <FAQSection />
         </div>
       </div>
