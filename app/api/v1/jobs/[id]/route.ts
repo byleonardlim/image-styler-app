@@ -29,11 +29,10 @@ function formatJobResponse(job: any): JobResponse {
 
 export async function GET(
   request: Request,
-  { params }: { params?: Record<string, string | string[]> }
+  { params }: any
 ) {
   try {
-    const rawId = params?.id;
-    const jobId = Array.isArray(rawId) ? rawId[0] : rawId;
+    const jobId = params.id as string | undefined;
 
     if (!jobId) {
       return NextResponse.json(
