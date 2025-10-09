@@ -301,6 +301,24 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
     }
   } else {
     log.info('No session_id found in payment intent metadata');
+    // Fallback: find the Checkout Session by payment_intent and process it
+    try {
+      const sessions = await stripe.checkout.sessions.list({
+        payment_intent: paymentIntent.id,
+        limit: 1,
+      });
+      if (sessions.data.length > 0) {
+        const session = sessions.data[0];
+        log.info('Found checkout session via payment_intent', { sessionId: session.id, paymentIntentId: paymentIntent.id });
+        await processCheckoutSessionCompletion(session);
+        log.info('Successfully processed checkout session via payment_intent lookup', { sessionId: session.id });
+      } else {
+        log.warn('No checkout session found for payment_intent', { paymentIntentId: paymentIntent.id });
+      }
+    } catch (error) {
+      log.error('Failed to resolve checkout session from payment_intent', error, { paymentIntentId: paymentIntent.id });
+      throw error;
+    }
   }
   
   return { success: true };
@@ -572,6 +590,15 @@ export const POST = async (req: Request) => {
         case 'checkout.session.completed':
           log.info('Handling checkout.session.completed event');
           await handleCheckoutSessionCompleted(event);
+          break;
+        case 'payment_intent.succeeded':
+          log.info('Handling payment_intent.succeeded event');
+          await handlePaymentIntentSucceeded(event);
+          break;
+        case 'charge.succeeded':
+          // No-op for job creation; logged for visibility
+          log.info('Handling charge.succeeded event');
+          await handleChargeSucceeded(event);
           break;
         default:
           log.warn('Unhandled event type', { eventType: event.type });
