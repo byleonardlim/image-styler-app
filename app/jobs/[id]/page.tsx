@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, Check, Download, Loader2 } from "lucide-react";
 import { usePollJobStatus } from '@/hooks/usePollJobStatus';
 import React from 'react';
+import JSZip from 'jszip';
 
 interface JobStatusPageProps {
   params: Promise<{ id: string }>;
@@ -287,10 +288,43 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                   };
 
                   if (generatedImageUrls.length > 1) {
-                    // Download each image separately when multiple are available
+                    // Create a ZIP archive with all images. Fallback: individually download failed ones.
+                    const zip = new JSZip();
+                    const failed: Array<{ url: string; index: number }> = [];
+
                     for (let i = 0; i < generatedImageUrls.length; i++) {
-                      await downloadSingle(generatedImageUrls[i], i);
-                      // Small delay to avoid overwhelming the browser download manager
+                      const url = generatedImageUrls[i];
+                      try {
+                        const res = await fetch(url);
+                        if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+                        const blob = await res.blob();
+                        const ext = getExtensionFromMime(blob.type);
+                        const filename = `styllio-${timestamp}-${i + 1}.${ext}`;
+                        zip.file(filename, blob);
+                      } catch (err) {
+                        console.warn('Image fetch failed, will fallback to direct download:', err);
+                        failed.push({ url, index: i });
+                      }
+                    }
+
+                    try {
+                      const zipBlob = await zip.generateAsync({ type: 'blob' });
+                      const zipUrl = URL.createObjectURL(zipBlob);
+                      const zipName = `styllio-${timestamp}.zip`;
+                      triggerDownload(zipUrl, zipName, zipUrl);
+                    } catch (err) {
+                      console.warn('ZIP generation failed, falling back to individual downloads:', err);
+                      // Fall back to individual downloads for all
+                      for (let i = 0; i < generatedImageUrls.length; i++) {
+                        await downloadSingle(generatedImageUrls[i], i);
+                        await new Promise((r) => setTimeout(r, 200));
+                      }
+                      return;
+                    }
+
+                    // Individually download any failed images (if any)
+                    for (const f of failed) {
+                      await downloadSingle(f.url, f.index);
                       await new Promise((r) => setTimeout(r, 200));
                     }
                   } else {

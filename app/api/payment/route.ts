@@ -3,6 +3,26 @@ import { NextResponse } from 'next/server';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
+function getBaseUrl(req: Request) {
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:3000';
+  }
+  const envBase = process.env.NEXT_PUBLIC_BASE_URL;
+  if (envBase && /^https?:\/\//i.test(envBase)) {
+    return envBase.replace(/\/+$/, '');
+  }
+  const proto = req.headers.get('x-forwarded-proto') || 'https';
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host');
+  if (host) {
+    return `${proto}://${host}`.replace(/\/+$/, '');
+  }
+  const origin = new URL(req.url).origin;
+  if (/^https?:\/\//i.test(origin)) {
+    return origin.replace(/\/+$/, '');
+  }
+  throw new Error('Unable to determine base URL');
+}
+
 interface CreateSessionRequest {
   price_data: {
     currency: string;
@@ -40,6 +60,7 @@ export async function POST(req: Request) {
     }
 
     try {
+      const baseUrl = getBaseUrl(req);
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         payment_method_types: ['card'],
@@ -54,8 +75,8 @@ export async function POST(req: Request) {
           },
           quantity: 1,
         }],
-      success_url: `${process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : process.env.NEXT_PUBLIC_BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : process.env.NEXT_PUBLIC_BASE_URL}/failure`,
+      success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/failure`,
       metadata: {
         productName: price_data.product_data.name,
         selectedStyle: style,

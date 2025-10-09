@@ -573,33 +573,6 @@ export const POST = async (req: Request) => {
           log.info('Handling checkout.session.completed event');
           await handleCheckoutSessionCompleted(event);
           break;
-
-        // Commenting out other event handlers to prevent duplicate processing
-        // case 'payment_intent.succeeded':
-        //   log.info('Handling payment_intent.succeeded event');
-        //   await handlePaymentIntentSucceeded(event);
-        //   break;
-
-        // case 'payment_intent.payment_failed':
-        //   log.info('Handling payment_intent.payment_failed event');
-        //   await handlePaymentIntentFailed(event);
-        //   break;
-
-        // case 'payment_intent.created':
-        //   log.info('Handling payment_intent.created event');
-        //   await handlePaymentIntentCreated(event);
-        //   break;
-
-        // case 'charge.succeeded':
-        //   log.info('Handling charge.succeeded event');
-        //   await handleChargeSucceeded(event);
-        //   break;
-
-        // case 'charge.updated':
-        //   log.info('Handling charge.updated event');
-        //   await handleChargeUpdated(event);
-        //   break;
-
         default:
           log.warn('Unhandled event type', { eventType: event.type });
           break;

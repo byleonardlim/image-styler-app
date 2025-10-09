@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useLayoutEffect, useCallback, useRef } from 'react';
+import Image from 'next/image';
 import ImageUploader from '@/components/ImageUploader';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -250,15 +251,16 @@ export default function Page() {
                         disabled={isLoading}
                       >
                         <div className="w-full aspect-square mb-2 overflow-hidden rounded-md">
-                          <div className={`w-full h-full ${isSelected ? 'bg-blue-50' : 'bg-slate-50'} flex items-center justify-center`}>
+                          <div className={`relative w-full h-full ${isSelected ? 'bg-blue-50' : 'bg-slate-50'} flex items-center justify-center`}>
                             {styleItem.previewImage && (
-                              <img 
-                                src={styleItem.previewImage} 
+                              <Image
+                                src={styleItem.previewImage}
                                 alt={`${styleItem.name} preview`}
-                                className="w-full h-full object-cover object-left-top"
+                                fill
+                                sizes="(max-width: 640px) 33vw, (max-width: 1024px) 33vw, 200px"
+                                className="object-cover object-left-top"
                                 onError={(e) => {
-                                  // Hide the image if it fails to load
-                                  const target = e.target as HTMLImageElement;
+                                  const target = e.currentTarget as HTMLImageElement;
                                   target.style.display = 'none';
                                 }}
                               />
