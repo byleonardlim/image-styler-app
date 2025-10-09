@@ -37,11 +37,20 @@ function JobRedirector({ sessionId }: { sessionId: string }) {
       try {
         console.log(`[JobRedirector] Fetching job for session ID: ${sessionId} (attempt ${jobIdRetryCount + 1}/${MAX_JOB_ID_RETRIES})`);
         const response = await fetch(`/api/jobs?sessionId=${encodeURIComponent(sessionId)}`);
-        
+        // Treat 404 as "not found yet" and retry, since job creation can be eventually consistent
+        if (response.status === 404) {
+          console.log(`[JobRedirector] Job not found yet for session: ${sessionId}, retrying...`);
+          if (isMounted) {
+            setJobIdRetryCount(prev => prev + 1);
+            retryTimeout = setTimeout(fetchJobId, JOB_ID_RETRY_DELAY);
+          }
+          return;
+        }
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         
         if (data?.id) {
