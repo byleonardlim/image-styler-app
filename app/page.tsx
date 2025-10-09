@@ -134,10 +134,8 @@ export default function Page() {
     setIsLoading(true);
 
     try {
-      // Generate Appwrite URLs from fileIds
-      const appwriteUrls = fileIds.map(fileId => 
-        `${process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT}/storage/buckets/${process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID}/files/${fileId}/view?project=${process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID}`
-      );
+      // Use server-side proxy URLs from our domain to avoid CORS
+      const appwriteUrls = fileIds.map(fileId => `/api/files/${fileId}`);
 
       // Store the checkout data in localStorage
       localStorage.setItem('checkoutData', JSON.stringify({

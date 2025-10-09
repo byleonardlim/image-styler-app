@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     // Return the response with CORS headers
     return NextResponse.json({
       fileId: result.$id,
-      fileUrl: getFileViewUrl(bucketId, result.$id),
+      fileUrl: `/api/files/${result.$id}`,
       previewUrl: getFilePreviewUrl(bucketId, result.$id, 800),
       name: file.name,
       size: file.size,
