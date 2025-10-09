@@ -7,7 +7,7 @@ const appwriteBucketId = process.env.NEXT_PUBLIC_APPWRITE_BUCKET_ID!;
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: any
 ) {
   const fileId = params.id;
 
