@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { databases } from '@/lib/appwriteServer';
 
 // This is a dynamic route handler
 export async function GET(
-  request: NextRequest,
-  context: any
-): Promise<Response> {
+  request: Request,
+  { params }: any
+) {
   try {
-    const jobId = context?.params?.id as string | undefined;
+    const jobId = params.id;
 
     if (!jobId) {
       return NextResponse.json(
