@@ -10,11 +10,10 @@ export async function generateStaticParams() {
 // This is a dynamic route handler
 export async function GET(
   request: Request,
-  { params }: { params?: Record<string, string | string[]> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const rawId = params?.id;
-    const jobId = Array.isArray(rawId) ? rawId[0] : rawId;
+    const jobId = params.id;
 
     if (!jobId) {
       return NextResponse.json(
@@ -54,3 +53,4 @@ export async function GET(
     );
   }
 }
+
