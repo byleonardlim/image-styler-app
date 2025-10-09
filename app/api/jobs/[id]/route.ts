@@ -1,19 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { databases } from '@/lib/appwriteServer';
-
-// This tells Next.js which paths to pre-render
-export async function generateStaticParams() {
-  // Return an empty array since we don't know the IDs in advance
-  return [];
-}
 
 // This is a dynamic route handler
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+  request: NextRequest,
+  context: any
+): Promise<Response> {
   try {
-    const jobId = params.id;
+    const jobId = context?.params?.id as string | undefined;
 
     if (!jobId) {
       return NextResponse.json(
