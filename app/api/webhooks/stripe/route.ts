@@ -46,6 +46,26 @@ const log = {
   }
 };
 
+// Resolve a base URL for links in emails (no request context here)
+const getBaseUrl = (): string => {
+  // Prefer explicitly configured public base URL
+  const direct = process.env.NEXT_PUBLIC_BASE_URL;
+  if (direct && direct.trim().length > 0) return direct.replace(/\/$/, '');
+
+  // Common platform vars (add protocol if missing)
+  const vercel = process.env.VERCEL_URL; // e.g. my-app.vercel.app
+  if (vercel && vercel.trim().length > 0) {
+    const hasProtocol = /^https?:\/\//i.test(vercel);
+    return (hasProtocol ? vercel : `https://${vercel}`).replace(/\/$/, '');
+  }
+
+  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl && appUrl.trim().length > 0) return appUrl.replace(/\/$/, '');
+
+  // Local dev fallback
+  return 'http://localhost:3000';
+};
+
 // Types
 interface ImageUploadResult {
   fileId: string;
@@ -139,7 +159,7 @@ const sendJobConfirmationEmail = async (job: JobData | null) => {
     }
     try {
     const { customer_email, customer_name, $id: jobId } = job;
-    const jobUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/jobs/${jobId!}`;
+    const jobUrl = `${getBaseUrl()}/jobs/${jobId!}`;
 
     await resend.emails.send({
       from: 'order@tx.styllio.co',
