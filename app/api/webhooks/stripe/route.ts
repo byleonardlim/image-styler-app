@@ -142,9 +142,9 @@ const sendJobConfirmationEmail = async (job: JobData | null) => {
     const jobUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/jobs/${jobId!}`;
 
     await resend.emails.send({
-      from: 'onboarding@resend.dev',
+      from: 'order@tx.styllio.co',
       to: customer_email!,
-      subject: 'Your Image Styling Job is Ready!',
+      subject: 'Your Image Styling',
       html: `
         <h1>Hi ${customer_name || 'there'},</h1>
         <p>Your payment was successful and your image styling job has been created.</p>
