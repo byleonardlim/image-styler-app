@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import { usePollJobStatus } from '@/hooks/usePollJobStatus';
 import { Button } from "@/components/ui/button";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const MAX_JOB_ID_RETRIES = 10; // Increased retries
@@ -106,13 +106,15 @@ function JobRedirector({ sessionId }: { sessionId: string }) {
   // Show error message if we have one
   if (error) {
     return (
-      <div className="text-center p-8">
-        <div className="text-yellow-500 mb-4">
-          <AlertCircle className="w-12 h-12 mx-auto" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
+          <div className="text-yellow-500 mb-4">
+            <AlertCircle className="w-12 h-12 mx-auto" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Processing Your Order</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <p className="text-sm text-gray-500">You can safely close this page. We'll email you when your images are ready.</p>
         </div>
-        <h2 className="text-xl font-semibold text-gray-800 mb-2">Processing Your Order</h2>
-        <p className="text-gray-600 mb-6">{error}</p>
-        <p className="text-sm text-gray-500">You can safely close this page. We'll email you when your images are ready.</p>
       </div>
     );
   }
@@ -120,20 +122,28 @@ function JobRedirector({ sessionId }: { sessionId: string }) {
   // Show loading state while we're looking up the job
   if (!jobId || isJobLoading) {
     return (
-      <div className="text-center p-8">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-        <h2 className="text-xl font-semibold text-gray-800 mb-2">Processing Your Order</h2>
-        <p className="text-gray-600">Preparing your job... {jobIdRetryCount > 0 && `(Attempt ${jobIdRetryCount}/${MAX_JOB_ID_RETRIES})`}</p>
-        <p className="text-sm text-gray-500 mt-4">This may take a moment. Please don't close this page.</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
+          <div className="mb-6">
+            <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Processing Your Order</h2>
+          <p className="text-gray-600 mb-4">Preparing your job... {jobIdRetryCount > 0 && `(Attempt ${jobIdRetryCount}/${MAX_JOB_ID_RETRIES})`}</p>
+          <p className="text-sm text-gray-500">This may take a moment. Please don't close this page.</p>
+        </div>
       </div>
     );
   }
 
   // This should be handled by the usePollJobStatus hook, but just in case
   return (
-    <div className="text-center p-8">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-      <p className="text-gray-600">Redirecting to your job...</p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
+        <div className="mb-6">
+          <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto" />
+        </div>
+        <p className="text-gray-600">Redirecting to your job...</p>
+      </div>
     </div>
   );
 }
@@ -143,7 +153,7 @@ function LoadingView() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
         <div className="mb-6">
-          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto" />
         </div>
         <h1 className="text-2xl font-bold text-gray-800 mb-2">Payment Successful!</h1>
         <p className="text-gray-600 mb-6">Preparing your job...</p>

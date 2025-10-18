@@ -202,7 +202,7 @@ export default function Page() {
       <section className="w-full bg-background py-16">
         <div className="hero-animate space-y-4 max-w-4xl mx-auto px-4 min-h-[40vh] flex flex-col justify-center text-center">
           <h1 className="text-6xl sm:text-5xl font-medium font-plex-condensed text-foreground">Turning any photos into share-worthy images</h1>
-          <p className="text-xl text-muted-foreground">No registration and data retention to generate high quality trending looks.</p>
+          <p className="text-xl text-muted-foreground">No registration and data retention to Generate high quality trending looks without registration and data retention.</p>
           <div className="pt-4">
             <BeforeAfterSlider
               className="mx-auto"

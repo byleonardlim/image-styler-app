@@ -24,6 +24,14 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
   const hasMultipleImages = generatedImageUrls.length > 1;
   const isJobCompleted = job?.status === 'completed';
 
+  const markDownloaded = async () => {
+    try {
+      await fetch(`/api/jobs/${jobId}/downloaded`, { method: 'POST' });
+    } catch (err) {
+      console.warn('Failed to flag is_downloaded:', err);
+    }
+  };
+
   function CanvasPreview({ src, alt }: { src: string; alt: string }) {
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
     const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -312,6 +320,7 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                       const zipUrl = URL.createObjectURL(zipBlob);
                       const zipName = `styllio-${timestamp}.zip`;
                       triggerDownload(zipUrl, zipName, zipUrl);
+                      await markDownloaded();
                     } catch (err) {
                       console.warn('ZIP generation failed, falling back to individual downloads:', err);
                       // Fall back to individual downloads for all
@@ -319,6 +328,7 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                         await downloadSingle(generatedImageUrls[i], i);
                         await new Promise((r) => setTimeout(r, 200));
                       }
+                      await markDownloaded();
                       return;
                     }
 
@@ -327,8 +337,10 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
                       await downloadSingle(f.url, f.index);
                       await new Promise((r) => setTimeout(r, 200));
                     }
+                    await markDownloaded();
                   } else {
                     await downloadSingle(generatedImageUrls[0]);
+                    await markDownloaded();
                   }
                 }}
                 className="flex-1 flex items-center justify-center"
