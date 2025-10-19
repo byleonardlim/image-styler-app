@@ -298,7 +298,7 @@ export default function ImageUploader({
     accept: ACCEPTED_FILE_TYPES,
     maxFiles: MAX_IMAGES,
     multiple: true,
-    maxSize: 5 * 1024 * 1024, // 5MB
+    maxSize: 10 * 1024 * 1024, // 10MB
     onDropRejected: () => {
       showToast('Some files were rejected. Only images up to 10MB are allowed.', { type: 'destructive' });
     },
