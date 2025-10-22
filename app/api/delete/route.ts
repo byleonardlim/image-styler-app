@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { storage } from '@/lib/appwriteServer';
+import { storage, databases } from '@/lib/appwriteServer';
+import { Query } from 'node-appwrite';
 import { appwriteBucketId } from '@/lib/appwrite';
 
 // Add CORS headers
@@ -20,6 +21,45 @@ export async function DELETE(request: Request) {
           status: 400,
           headers: corsHeaders
         }
+      );
+    }
+
+    // Verify ownership via session cookie and uploads mapping
+    const cookieHeader = request.headers.get('cookie') || '';
+    const sidMatch = cookieHeader.match(/(?:^|;\s*)sid=([^;]+)/);
+    const sid = sidMatch ? decodeURIComponent(sidMatch[1]) : '';
+    if (!sid) {
+      return NextResponse.json(
+        { error: 'Unauthorized: missing session' },
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    try {
+      const uploadsDbId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
+      const uploadsColId = process.env.NEXT_PUBLIC_APPWRITE_UPLOADS_COLLECTION_ID!;
+      // Look up ownership
+      const res = await databases.listDocuments(
+        uploadsDbId,
+        uploadsColId,
+        [
+          Query.equal('file_id', fileId),
+          Query.equal('session_id', sid),
+          Query.limit(1)
+        ]
+      );
+      const owns = (res.documents || []).length > 0;
+      if (!owns) {
+        return NextResponse.json(
+          { error: 'Forbidden: not owner of file' },
+          { status: 403, headers: corsHeaders }
+        );
+      }
+    } catch (e) {
+      console.error('Ownership check failed', e);
+      return NextResponse.json(
+        { error: 'Failed to authorize delete' },
+        { status: 500, headers: corsHeaders }
       );
     }
 

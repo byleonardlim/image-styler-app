@@ -158,6 +158,10 @@ const sendJobConfirmationEmail = async (job: JobData | null) => {
         return;
     }
     try {
+    if ((job as any).confirmation_email_sent) {
+      log.info('Confirmation email already sent, skipping', { jobId: job.$id });
+      return;
+    }
     const { customer_email, customer_name, $id: jobId } = job;
     const jobUrl = `${getBaseUrl()}/jobs/${jobId!}`;
 
@@ -185,6 +189,17 @@ const sendJobConfirmationEmail = async (job: JobData | null) => {
     });
 
     log.info('Job confirmation email sent successfully', { jobId: job.$id });
+    try {
+      await databases.updateDocument(
+        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
+        process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
+        job.$id,
+        { confirmation_email_sent: true }
+      );
+      log.info('Marked confirmation_email_sent', { jobId: job.$id });
+    } catch (markErr) {
+      log.error('Failed to mark confirmation_email_sent', markErr, { jobId: job.$id });
+    }
   } catch (error) {
     log.error('Failed to send job confirmation email', error, { jobId: job?.$id });
   }
@@ -223,6 +238,7 @@ const createJob = async function createJob(
       payment_currency: paymentCurrency,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      confirmation_email_sent: false,
     };
 
     log.info('Creating job document', { 
@@ -615,6 +631,19 @@ export const POST = async (req: Request) => {
     // Handle the event
     try {
       log.info('Processing event', { eventType: event.type });
+      // Idempotency: if configured, skip if we've already processed this event
+      const stripeEventsColId = process.env.NEXT_PUBLIC_APPWRITE_STRIPE_EVENTS_COLLECTION_ID;
+      const dbId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
+      if (stripeEventsColId) {
+        try {
+          // Try to get the event doc by using Stripe event ID as the document ID
+          await databases.getDocument(dbId, stripeEventsColId, event.id);
+          log.info('Event already processed, skipping', { eventId: event.id });
+          return NextResponse.json({ received: true, deduped: true, eventId: event.id });
+        } catch {
+          // Not found -> proceed
+        }
+      }
       
       switch (event.type) {
         case 'checkout.session.completed':
@@ -636,6 +665,23 @@ export const POST = async (req: Request) => {
       }
 
       log.info('Successfully processed event', { eventType: event.type });
+      if (stripeEventsColId) {
+        try {
+          await databases.createDocument(
+            dbId,
+            stripeEventsColId,
+            event.id, // use event id as document id for natural idempotency
+            {
+              type: event.type,
+              created_at: new Date().toISOString()
+            }
+          );
+          log.info('Recorded processed event', { eventId: event.id });
+        } catch (recErr) {
+          // If it fails because it already exists, we're fine; otherwise log
+          log.warn('Failed to record processed event', { eventId: event.id, error: (recErr as any)?.message });
+        }
+      }
       return NextResponse.json({ 
         received: true,
         eventType: event.type,
