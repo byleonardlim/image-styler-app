@@ -164,13 +164,23 @@ const sendJobConfirmationEmail = async (job: JobData | null) => {
     await resend.emails.send({
       from: 'order@tx.styllio.co',
       to: customer_email!,
-      subject: 'Your Image Styling',
+      subject: 'Styllio - Order Confirmation',
       html: `
-        <h1>Hi ${customer_name || 'there'},</h1>
-        <p>Your payment was successful and your image styling job has been created.</p>
-        <p>You can view the status of your job here:</p>
-        <a href="${jobUrl}">${jobUrl}</a>
-        <p>Thanks for using Image Styler!</p>
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background:#0b0f19; color:#e5e7eb; padding:32px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; margin:0 auto; background:#111827; border-radius:14px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.35);">
+            <tr>
+              <td style="padding:32px;">
+                <h1 style="margin:0 0 12px; font-size:24px; line-height:1.35; color:#f9fafb;">Hi ${customer_name || 'there'},</h1>
+                <p style="margin:0 0 18px; color:#d1d5db;">Your payment was successful and your image styling job has been created.</p>
+                <p style="margin:0 0 6px; color:#9ca3af;">Track your job here:</p>
+                <a href="${jobUrl}" style="display:inline-block; background-image:linear-gradient(135deg,#6366f1,#22d3ee); color:#0b0f19; text-decoration:none; font-weight:700; padding:12px 18px; border-radius:10px; letter-spacing:.2px;">View Job Status</a>
+                <p style="margin:14px 0 0; font-size:12px; color:#6b7280;">Or copy this link:</p>
+                <div style="margin-top:6px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size:12px; background:#0b1220; border:1px solid #1f2937; color:#93c5fd; padding:10px 12px; border-radius:8px; word-break:break-all;">${jobUrl}</div>
+                <p style="margin:22px 0 0; color:#9ca3af;">Thanks for using <span style="color:#a78bfa; font-weight:600;">Styllio</span>!</p>
+              </td>
+            </tr>
+          </table>
+        </div>
       `,
     });
 
