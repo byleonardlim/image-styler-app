@@ -41,7 +41,7 @@ async function poll() {
     const jobData = await response.json();
     self.postMessage({ type: 'data', payload: jobData });
 
-    const isJobFinished = (jobData.status === 'completed' && Array.isArray(jobData.imageUrls) && jobData.imageUrls.length > 0) || jobData.status === 'failed';
+    const isJobFinished = jobData.status === 'completed' || jobData.status === 'failed';
 
     if (isJobFinished) {
       clearInterval(pollInterval);

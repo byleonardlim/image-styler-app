@@ -28,6 +28,11 @@ export function usePollJobStatus(jobId: string | null): UsePollJobStatusReturn {
       return;
     }
 
+    // Reset state when a new valid jobId is provided so UI stays in loading state
+    setIsLoading(true);
+    setError(null);
+    setJob(null);
+
     let unsubscribe: (() => void) | null = null;
     let worker: Worker | null = null;
     let fallbackTimer: any = null;
@@ -63,6 +68,22 @@ export function usePollJobStatus(jobId: string | null): UsePollJobStatusReturn {
         const dbId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
         const colId = process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!;
         const channel = `databases.${dbId}.collections.${colId}.documents.${jobId}`;
+
+        // Do an immediate fetch to populate current state quickly
+        try {
+          const resp = await fetch(`/api/v1/jobs/${jobId}`);
+          if (resp.ok) {
+            const data = await resp.json();
+            setJob(data);
+            const done = data.status === 'completed' || data.status === 'failed';
+            if (done) {
+              setIsLoading(false);
+              if (data.status === 'failed') setError(data.error || 'Job processing failed.');
+            }
+          }
+        } catch {
+          // ignore, fallback timer below can start the worker
+        }
 
         // Set a short fallback in case no updates come in (job might already be completed)
         fallbackTimer = setTimeout(() => {
