@@ -6,6 +6,7 @@ import { AlertCircle, Check, Download, Loader2 } from "lucide-react";
 import { usePollJobStatus } from '@/hooks/usePollJobStatus';
 import React from 'react';
 import JSZip from 'jszip';
+import { getOrCreateAnonymousUserId } from '@/lib/appwriteClient';
 
 interface JobStatusPageProps {
   params: Promise<{ id: string }>;
@@ -14,7 +15,43 @@ interface JobStatusPageProps {
 export default function JobStatusPage({ params }: JobStatusPageProps) {
   const router = useRouter();
   const { id: jobId } = React.use(params);
-  const { job, isLoading, error } = usePollJobStatus(jobId);
+  const [ready, setReady] = React.useState(false);
+  const [claimError, setClaimError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const hash = typeof window !== 'undefined' ? window.location.hash : '';
+        const match = hash && hash.match(/[#&]?claim=([^&]+)/);
+        if (match && match[1]) {
+          const claimToken = decodeURIComponent(match[1]);
+          const appwriteUserId = await getOrCreateAnonymousUserId();
+          const res = await fetch(`/api/jobs/${jobId}/claim`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ claimToken, appwriteUserId })
+          });
+          if (!res.ok) {
+            const t = await res.json().catch(() => ({}));
+            throw new Error(t?.error || 'Failed to claim access');
+          }
+          // Remove fragment from URL
+          if (typeof window !== 'undefined') {
+            history.replaceState(null, '', window.location.pathname);
+          }
+        }
+      } catch (e: any) {
+        if (!cancelled) setClaimError(e?.message || 'Claim failed');
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    };
+    if (jobId) run(); else setReady(true);
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  const { job, isLoading, error } = usePollJobStatus(ready ? jobId : null);
 
   const handleBackToHome = () => {
     router.push('/');
@@ -88,7 +125,7 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
     );
   }
 
-  if (isLoading) {
+  if (!ready || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
@@ -97,6 +134,9 @@ export default function JobStatusPage({ params }: JobStatusPageProps) {
           </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Processing Your Images</h1>
           <p className="text-gray-600 mb-4">Generating your styled images. This may take a few moments...</p>
+          {claimError && (
+            <p className="text-sm text-red-500">{claimError}</p>
+          )}
           {job?.progress !== undefined && (
             <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
               <div 

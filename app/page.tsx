@@ -11,6 +11,7 @@ import FAQSection from "@/components/FAQSection";
 // gsap will be dynamically imported in effects to avoid SSR issues
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 import { IMAGE_PRICING } from '@/config/pricing';
+import { getOrCreateAnonymousUserId } from '@/lib/appwriteClient';
 
 export default function Page() {
   // Style configuration
@@ -145,6 +146,7 @@ export default function Page() {
       }));
 
       // Create checkout session with price data
+      const appwriteUserId = await getOrCreateAnonymousUserId();
       const response = await fetch('/api/payment', {
         method: 'POST',
         headers: {
@@ -161,7 +163,8 @@ export default function Page() {
           },
           style: style,
           imageUrls: appwriteUrls, // Use Appwrite URLs instead of blob URLs
-          fileIds: fileIds // Also pass fileIds for reference
+          fileIds: fileIds, // Also pass fileIds for reference
+          appwriteUserId
         }),
       });
 

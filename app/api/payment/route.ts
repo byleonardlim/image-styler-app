@@ -66,6 +66,7 @@ interface CreateSessionRequest {
   imageUrls?: string[]; // deprecated in favor of fileIds
   fileIds: string[];   // Appwrite file IDs
   customerEmail?: string;
+  appwriteUserId?: string;
 }
 
 export async function POST(req: Request) {
@@ -73,7 +74,7 @@ export async function POST(req: Request) {
     if (!checkRateLimit(req)) {
       return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
     }
-    const { price_data, style, imageUrls, customerEmail, fileIds = [] } = await req.json() as CreateSessionRequest;
+    const { price_data, style, imageUrls, customerEmail, fileIds = [], appwriteUserId } = await req.json() as CreateSessionRequest;
 
     // Basic input validation
     if (!style) {
@@ -125,6 +126,7 @@ export async function POST(req: Request) {
         // them in a database linked by a unique ID in Stripe metadata.
         imageUrls: JSON.stringify(imageUrls || []),
         fileIds: JSON.stringify(fileIds),
+        appwriteUserId: appwriteUserId || '',
       },
       customer_email: customerEmail,
     });

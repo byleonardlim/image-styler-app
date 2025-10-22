@@ -7,6 +7,7 @@ import { triggerStyleTransfer } from '@/lib/triggerFunction';
 import { Query } from 'node-appwrite';
 import { nanoid } from 'nanoid';
 import { Resend } from 'resend';
+import crypto from 'crypto';
 
 
 // Constants
@@ -152,7 +153,7 @@ const uploadImageToStorage = async (
   };
 };
 
-const sendJobConfirmationEmail = async (job: JobData | null) => {
+const sendJobConfirmationEmail = async (job: JobData | null, claimToken?: string) => {
       if (!job) {
         log.warn('sendJobConfirmationEmail called with null job');
         return;
@@ -163,7 +164,9 @@ const sendJobConfirmationEmail = async (job: JobData | null) => {
       return;
     }
     const { customer_email, customer_name, $id: jobId } = job;
-    const jobUrl = `${getBaseUrl()}/jobs/${jobId!}`;
+    const base = `${getBaseUrl()}/jobs/${jobId!}`;
+    const claimSuffix = claimToken ? `#claim=${encodeURIComponent(claimToken)}` : '';
+    const jobUrl = `${base}${claimSuffix}`;
 
     await resend.emails.send({
       from: 'order@tx.styllio.co',
@@ -208,6 +211,7 @@ const sendJobConfirmationEmail = async (job: JobData | null) => {
 const createJob = async function createJob(
   session: Stripe.Checkout.Session,
   imageUrls: string[],
+  opts?: { appwriteUserId?: string }
 ) {
   try {
     const customerName = session.customer_details?.name || 'Guest';
@@ -248,11 +252,17 @@ const createJob = async function createJob(
       imageCount: imageUrls.length
     });
     
+    const permissions: string[] = [];
+    if (opts?.appwriteUserId) {
+      permissions.push(`read(\"user:${opts.appwriteUserId}\")`);
+    }
+
     const job = await databases.createDocument(
       process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!,
       process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_ID!,
       jobId,
-      jobData
+      jobData,
+      permissions.length > 0 ? permissions : undefined
     );
 
     log.info('Job document created successfully', { 
@@ -499,11 +509,40 @@ async function processCheckoutSessionCompletion(session: Stripe.Checkout.Session
     }
 
     // Create the job document with status 'pending' and all required fields
-    job = await createJob(session, imageUrls);
+    const appwriteUserId = (session.metadata as any)?.appwriteUserId as string | undefined;
+    job = await createJob(session, imageUrls, { appwriteUserId });
     log.info('Created new job', { jobId: job.$id, status: job.job_status });
 
+    // Create a one-time claim token for cross-device realtime access
+    let claimToken: string | undefined = undefined;
+    try {
+      const raw = crypto.randomBytes(24).toString('base64url');
+      const hash = crypto.createHash('sha256').update(raw).digest('hex');
+      const claimsDbId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
+      const claimsColId = process.env.NEXT_PUBLIC_APPWRITE_CLAIMS_COLLECTION_ID;
+      if (claimsColId) {
+        const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(); // 24h
+        await databases.createDocument(
+          claimsDbId,
+          claimsColId,
+          ID.unique(),
+          {
+            job_id: job.$id,
+            token_hash: hash,
+            expires_at: expiresAt,
+            used: false,
+            created_at: new Date().toISOString(),
+          }
+        );
+        claimToken = raw;
+        log.info('Created claim token record', { jobId: job.$id });
+      }
+    } catch (claimErr) {
+      log.error('Failed to create claim token', claimErr, { jobId: job.$id });
+    }
+
     // Send job confirmation email
-    await sendJobConfirmationEmail(job as JobData);
+    await sendJobConfirmationEmail(job as JobData, claimToken);
     
     // Trigger the style transfer function
     log.info('Triggering style transfer function', { jobId: job.$id });
