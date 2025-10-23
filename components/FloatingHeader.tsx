@@ -113,8 +113,8 @@ export function FloatingHeader({ isScrolled, onStylizeClick }: FloatingHeaderPro
   return (
     <div 
       ref={containerRef}
-      className={`fixed top-0 left-0 right-0 z-50 p-8 transition-all duration-300 ${
-        effectiveScrolled ? 'bg-background/75 backdrop-blur-lg shadow-xl rounded-sm border border-border/50 mx-2 mt-2 lg:mx-6 lg:mt-6 px-3 py-2' : 'bg-transparent'
+      className={`fixed top-0 left-0 right-0 z-50 p-2 lg:p-8 transition-all duration-300 ${
+        effectiveScrolled ? 'bg-gradient-to-b from-background/60 to-background/0 backdrop-blur-sm lg:p-2' : 'bg-transparent'
       }`}
     >
       <div className="w-full flex items-center justify-between">
@@ -124,8 +124,8 @@ export function FloatingHeader({ isScrolled, onStylizeClick }: FloatingHeaderPro
             className="rounded-sm"
             onClick={handleStylize}
           >
-            Stylize your image - from{' '}
-            <span className="text-sm">$2.50</span>
+            <span className="sm:hidden">Style images from $2.50</span>
+            <span className="hidden sm:inline">Stylize your images - from <span className="text-sm">$2.50</span></span>
           </Button>
         </div>
       </div>

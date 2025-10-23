@@ -8,6 +8,7 @@ import { ImageState, ImageUploaderProps, ImageAction } from '@/types/image';
 import { uploadImage, deleteImage } from '@/lib/api/imageService';
 import { ImagePreview } from './ImagePreview';
 import { IMAGE_PRICING } from '@/config/pricing';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 const MAX_IMAGES = 10;
 const ACCEPTED_FILE_TYPES = {
@@ -365,6 +366,37 @@ export default function ImageUploader({
 
   return (
     <div className="space-y-4">
+      <Card className="border-blue-200/60 bg-green-50/50 dark:border-green-900/40 dark:bg-green-950/20 shadow-none">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base capitalize text-green-800 dark:text-green-200">Transparent, per-photo prices</CardTitle>
+          <CardDescription className="text-sm text-muted-foreground">
+            All currency prices are in USD. Pay only for the photos you style.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="rounded-lg border p-3">
+              <div className="text-sm text-muted-foreground">First {IMAGE_PRICING.BULK_THRESHOLD} photos</div>
+              <div className="text-lg font-semibold">${IMAGE_PRICING.STANDARD_PRICE.toFixed(2)} each</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-sm text-muted-foreground">Additional photos</div>
+              <div className="text-lg font-semibold">${IMAGE_PRICING.BULK_PRICE.toFixed(2)} each</div>
+            </div>
+          </div>
+          {state.previews.length > 0 && (
+            <div className="mt-3 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Selected: {state.previews.length} photo{state.previews.length === 1 ? '' : 's'}</span>
+              <span className="font-medium text-green-600 dark:text-green-400">${(
+                state.previews.length <= IMAGE_PRICING.BULK_THRESHOLD 
+                  ? state.previews.length * IMAGE_PRICING.STANDARD_PRICE
+                  : IMAGE_PRICING.BULK_THRESHOLD * IMAGE_PRICING.STANDARD_PRICE + 
+                    (state.previews.length - IMAGE_PRICING.BULK_THRESHOLD) * IMAGE_PRICING.BULK_PRICE
+              ).toFixed(2)}</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
       <div 
         {...getRootProps()} 
         className={`flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
@@ -450,22 +482,7 @@ export default function ImageUploader({
         </div>
       )}
 
-      <div className="text-xs text-muted-foreground text-center">
-        <p>
-          First {IMAGE_PRICING.BULK_THRESHOLD} photos: ${IMAGE_PRICING.STANDARD_PRICE.toFixed(2)} each • 
-          Additional photos: $${IMAGE_PRICING.BULK_PRICE.toFixed(2)} each
-        </p>
-        {state.previews.length > 0 && (
-          <p className="mt-1 text-green-600 dark:text-green-400">
-            {state.previews.length <= IMAGE_PRICING.BULK_THRESHOLD 
-              ? `Total: $${(state.previews.length * IMAGE_PRICING.STANDARD_PRICE).toFixed(2)}`
-              : `Total: $${(
-                  IMAGE_PRICING.BULK_THRESHOLD * IMAGE_PRICING.STANDARD_PRICE + 
-                  (state.previews.length - IMAGE_PRICING.BULK_THRESHOLD) * IMAGE_PRICING.BULK_PRICE
-                ).toFixed(2)} (${state.previews.length - IMAGE_PRICING.BULK_THRESHOLD} extra photos)`}
-          </p>
-        )}
-      </div>
+      
     </div>
   );
 }
